@@ -3,6 +3,7 @@
 # Erica Lastufka 21/05/2018  
 
 #Description: Isolate FeXVIII line in AIA maps and/or lightcurves
+# 19.2.21 DEPRECATED all functions are now in aia_utils.py
 #######################################
 
 #######################################
