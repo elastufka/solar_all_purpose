@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import plotly
 import plotly.colors
 import plotly.io as pio
-
+import plotly.express as px
 
 def get_continuous_color(colorscale, intermed):
     """
@@ -68,3 +68,30 @@ def default_mode():
     '''activate default pallette for matplotlib and plotly'''
     plt.style.use('default')
     pio.templates.default = "plotly"#"ggplot2"#"plotly_dark"
+    
+def plot_dem_2D(df,what='DEM'):
+    ''' plot stuff in the DEM dataframe'''
+    
+    lgtkeys=[k for k in df.keys() if k.startswith('dem')]
+    lgtkeys=[k for k in lgtkeys if '_m' not in k]
+    lgtaxis=[float(k[4:]) for k in lgtkeys] #may not need this...
+
+    fig=go.Figure()
+    
+    yvec=[df[str(t)+'_mean'].values[0] for t in lgtkeys]
+    try:
+        errory=dict(type='data', array=[df['edem_'+str(t)+'_mean'].values[0] for t in lgtaxis],visible=True,thickness=0.5)
+        errorx=dict(type='data', array=[df['elogt_'+str(t)+'_mean'].values[0] for t in lgtaxis],visible=True,thickness=0.5)
+    except KeyError:
+        errory=None
+        errorx=None
+    fig.add_trace(go.Scatter(x=lgtaxis,y=yvec,error_x=errorx,error_y=errory,name=what))
+ 
+    fig.update_layout(yaxis_title='Mean DEM',xaxis_title='Log T (K)',yaxis_type='log')
+    return fig
+
+
+def dem_image(df,T):
+    '''T is string temperature '''
+    fig=px.imshow(df['dem_' + str(T)][0])
+    return fig

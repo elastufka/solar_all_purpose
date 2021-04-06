@@ -171,38 +171,53 @@ def plot_and_save(mlist,subcoords=False,outname='STEREO_orbit8_',creverse=True,v
         plt.colorbar()
         fig.savefig(outname+str(i).zfill(2)+'.png')
     #return submaps
+    
+def make_single_dfaia(maplist,mask=False,mask_data=False,force_mask=False, verbose=False,how='mean'):
+    '''same as amke_simple_dfaia but for a single timestep '''
+    pdicts=[]
+    for i,w in enumerate([94,131,171,193,211,335]):
+        pdict=track_region_box([maplist[i]],filenames=False,circle=False,mask=mask,plot=False, mask_data=mask_data,force_mask=force_mask,verbose=verbose,how=how)
+        adf=pd.DataFrame(pdict)
+        adf['wavelength']=w
+        adf['timestamps']=pd.to_datetime(adf.timestamps)
+        pdicts.append(adf)
 
-def make_simple_dfaia(submap,timerange=['20120912_09','20120912_'],folder='/Users/wheatley/Documents/Solar/NuStar/orbit8/AIA',to_json=False, mask=False, mask_data=False, force_mask=True,verbose=False):
+    dfaia=pd.concat(pdicts)
+    dfaia.reset_index(inplace=True)
+
+    return dfaia
+
+def make_simple_dfaia(submap= False,timerange=['20120912_09','20120912_'],folder='/Users/wheatley/Documents/Solar/NuStar/orbit8/AIA',to_json=False, mask=False, mask_data=False, force_mask=True,verbose=False,how='mean'):
     '''make the dataframe with just the unmasked data for given timerange'''
     wavs=[94,131,171,193,211,335]
-    if type(submap[0]) !=SkyCoord:
-        #convert to skycoord
-        bl=SkyCoord()
-        tr=SkyCoord() #fill in later, need coordframe, for now assume SkyCoord
-    else:
+    if submap:
         bl,tr=submap
     all_maps,pdicts=[],[]
     for w in wavs:
-        afiles=glob.glob(folder+'/AIA'+timerange[0]+'*'+str(w)+'.fits')
-        afiles.sort()
-        #print(afiles)
-        amaps=[sunpy.map.Map(a).submap(bl,tr) for a in afiles]
-        all_maps.append(amaps)
-        print("Processing ", len(amaps), " maps")
-        pdict=track_region_box(amaps,filenames=afiles,circle=False,mask=mask,plot=False, mask_data=mask_data,force_mask=force_mask,verbose=verbose) #currently might fail unless tr is 1 frame
+        try:
+            afiles=glob.glob(folder+'/AIA'+timerange[0]+'*'+str(w)+'.fits')
+            afiles.sort()
+            #print(afiles)
+            amaps=[sunpy.map.Map(a).submap(bl,tr) for a in afiles]
+            all_maps.append(amaps)
+            print("Processing ", len(amaps), " maps")
+        except TypeError: #timerange is datetime, although mostly i want this to work if afiles ==[]
+            maploc='%s/AIA%smaps.p' % (folder,"{:03d}".format(w))
+            all_maps=pickle.load(open(maploc,'rb')) #these are already submaps...
+            #print(all_maps[0].meta['date_obs'])
+            if submap:
+                amaps=[m.submap(submap[0],submap[1]) for m in all_maps if dt.strptime(m.meta['date_obs'],'%Y-%m-%dT%H:%M:%S.%f') >= timerange[0] and dt.strptime(m.meta['date_obs'],'%Y-%m-%dT%H:%M:%S.%f') <= timerange[1]]
+            else:
+                amaps=[m for m in all_maps if dt.strptime(m.meta['date_obs'],'%Y-%m-%dT%H:%M:%S.%f') >= timerange[0] and dt.strptime(m.meta['date_obs'],'%Y-%m-%dT%H:%M:%S.%f') <= timerange[1]]
+            afiles=False
+            
+        pdict=track_region_box(amaps,filenames=afiles,circle=False,mask=mask,plot=False, mask_data=mask_data,force_mask=force_mask,verbose=verbose,how=how) #currently might fail unless tr is 1 frame
         #try:
             #adf=pd.DataFrame({ key:pd.Series(value) for key, value in pdict.items()})#
         adf=pd.DataFrame(pdict)
         #adf['filenames']=afiles
         adf['wavelength']=w
         pdicts.append(adf)
-#        except ValueError:
-#            print("Value Error, wavelength ",w, " num files ", len(afiles))
-#            print(len(pdicts))
-#            print([len(v) for k,v in pdicts[0].items()])
-#            print([len(v) for k,v in pdict.items()])
-#            break
-        
 
     dfaia=pd.concat(pdicts)
     dfaia['cutout_shape']=[np.product(np.shape(d)) for d in dfaia.data]
@@ -315,6 +330,32 @@ def make_aia_mask(preflare_tr, flare_tr, flare_box, qs_box, tag=None,sigma=3,plo
         fig.show()
 
     return masks, mask_plus,mask_minus
+    
+def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=True, diff=True):
+    '''make mask from to n% brightest pixels in selected wavelength image '''
+    from skimage.draw import polygon
+    if not tag:
+        tag=""
+    #load pre-flare and peak-flare images
+    #peakmap=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits') #this is the appropriate submap
+    try:
+        if diff:
+            kmap=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits')
+            pmap=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_preflare_'+tag+'00.fits')
+            mdiff=diff_maps([kmap,pmap])[0]
+        else:
+            mdiff=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits')
+    except ValueError:
+        print('Could not make difference image, using peak flare image only')
+        mdiff=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits') #this is the appropriate submap
+    if submap:
+        mdiff=mdiff.submap(submap[0],submap[1])
+
+    cs,hpj_cs,contour=find_centroid_from_map(mdiff,levels=contour,show=False)
+    rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
+    mask=np.zeros(mdiff.data.T.shape)
+    mask[rr,cc]=1
+    return ~mask.T.astype(bool)
     
 def plot_aia_masks(maskpickle,tag=False):
     if not tag:

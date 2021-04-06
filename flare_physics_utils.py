@@ -13,6 +13,7 @@ from scipy import constants
 #from sunpy.net import vso
 import numpy as np
 from scipy.special import wofz
+from sunpy_map_utils import *#cm_to_arcsec
 #import .ma as ma
 #import matplotlib.dates as mdates
 #import pandas as pd
@@ -27,11 +28,26 @@ from scipy.special import wofz
 #
 #from flux_in_boxes import track_region_box
 
-def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp_logt=False):
+def argmax2D(input_array):
+    '''return indices of maximum of 2D array'''
+    x=input_array.max(axis=1).argmax()
+    y=input_array.max(axis=0).argmax()
+    return [x,y]
+    
+def argmin2D(input_array):
+    '''return indices of minimum of 2D array'''
+    x=input_array.min(axis=1).argmin()
+    y=input_array.min(axis=0).argmin()
+    return [x,y]
+    
+def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp_logt=False, perpixel=True):
     '''EM (cm^-3) = F*S/R(T)
     F: flux DN s^-1 px^-1
     S: size cm^2
     R(T): response function @ given T in DN cm^5 s^-1 px^-1
+    convert px to cm^2
+    => RT/pixsize_cm2 has units DN cm^3 s^-1
+    Flux in units DN/s
     
     Therefore: F = R(T) * EM / S
     leave out /S if size unknown, then units are: DN cm^2 s^-1 px^-1
@@ -39,7 +55,7 @@ def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp
     Boerner, P. F., Testa, P., Warren, H., Weber, M. A., & Schrijver,
     C. J. 2014, Sol. Phys., 289, 2377'''
     wavs=[94,131,171,193,211,335]
-    if not trmatrix.all() or not tresp_logt.all():
+    if type(trmatrix) != np.array or type(tresp_logt) != np.array:
         _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
     widx=wavs.index(wavelength)
     R=trmatrix[:,widx]
@@ -50,35 +66,47 @@ def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp
     tidx=list(tresp_logt).index(find_closest(tresp_logt,logT))
     RT=R[tidx]
     #print(logT,RT)
+    if perpixel:
+        pixsize_cm2=(arcsec_to_cm(0.6*u.arcsec).value)**2 #assume pixel size is .6"
+        flux=EM*(RT/pixsize_cm2)
     if size:
-        return tresp_logt,(RT*EM)/size
+        return tresp_logt,flux/size
     else:
-        return tresp_logt,(RT*EM)
+        return tresp_logt,flux
 
-def plot_AIA_expected_fluxes(EM, T,size_range=[1e3,1e5], show=True, log=False, plotter='matplotlib'):
+def all_expected_AIA_fluxes(EM,T,size=None,log=False, trmatrix=False,tresp_logt=False, perpixel=True):
+    fluxes=[]
+    for w in [94,131,171,193,211,335]:
+       calc=expected_AIA_flux(EM,T,w,size=size,trmatrix=trmatrix,tresp_logt=tresp_logt,log=log)
+       fluxes.append(calc[1])
+    return fluxes
+
+def plot_AIA_expected_fluxes(EM, T,size_range=[1e3,1e5], show=True, log=False, plotter='matplotlib',sunits='cm2'):
     wavs=[94,131,171,193,211,335]
     _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
     sizevec=np.linspace(size_range[0],size_range[1],100)
     
-    loci_curves=[]
-    for w in wavs:
-        loci_curve=[expected_AIA_flux(EM,T,w,size=s,trmatrix=trmatrix,tresp_logt=tresp_logt,log=log)[1] for s in sizevec]
-        loci_curves.append(loci_curve)
+    loci_curves=[all_expected_AIA_fluxes(EM,T,size=s,trmatrix=trmatrix,tresp_logt=tresp_logt,log=log) for s in sizevec]
     
-    loci_curves=np.array(loci_curves)
+    loci_curves=np.array(loci_curves).T #transpose?
 
     if show:
         clrs=['darkgreen','darkcyan','gold','sienna','indianred','darkslateblue']
         ylabel='$\mathrm{Flux\;(DN\;s^{-1}\;px^{-1})}$'
-        xlabel='$\mathrm{Source\;size\;(cm^{2})}$'
+        if sunits=='arcsec':
+            sizevec=[cm_to_arcsec(np.sqrt(s)*u.cm).value**2 for s in sizevec] #is it okay that it's squared?
+            size_range=[cm_to_arcsec(np.sqrt(s)*u.cm).value**2 for s in size_range]
+            xlabel='arcsec^2'
+        else:
+            xlabel='$\mathrm{Source\;size\;(cm^{2})}$'
         title="Expected AIA flux for EM=%.2E, T (MK)=%.2f" % (EM,T)
         if plotter=='plotly':
             fig=go.Figure()
             for i,w in enumerate(wavs):
                 fig.add_trace(go.Scatter(x=sizevec,y=loci_curves[i],name=w,mode='lines',line=dict(color=clrs[i])))
-            fig.update_layout(title=title,yaxis_title="Flux DN/s/px",xaxis_title="Source size cm2")
+            fig.update_layout(title=title,yaxis_title="Flux DN/s/px",xaxis_title=xlabel)
             #if log:
-            fig.update_layout(xaxis_type='log',yaxis_type='log', xaxis_range=[np.log10(size_range[0]),np.log10(size_range[1])],height=570,width=570)
+            fig.update_layout(xaxis_type='log',yaxis_type='log', xaxis_range=[np.log10(size_range[0]),np.log10(size_range[1])])#,height=570,width=650)
             fig.update_xaxes(showexponent = 'all',exponentformat = 'e')
             fig.update_yaxes(showexponent = 'all',exponentformat = 'e')
             fig.show()
@@ -88,9 +116,9 @@ def plot_AIA_expected_fluxes(EM, T,size_range=[1e3,1e5], show=True, log=False, p
             fig,ax=plt.subplots()
             for i,w in enumerate(wavs):
                 ax.plot(sizevec,loci_curves[i],label=str(w),color=clrs[i])
-            if log:
-                ax.set_yscale('log')
-                ax.set_xscale('log')
+            #if log:
+            ax.set_yscale('log')
+            ax.set_xscale('log')
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
             ax.legend(loc='upper right')
@@ -98,9 +126,53 @@ def plot_AIA_expected_fluxes(EM, T,size_range=[1e3,1e5], show=True, log=False, p
             fig.show()
     else:
         return tresp_logt,loci_curves
+        
+def EM_loci_curves(flux_obs,trmatrix=False):
+    '''counterpart to expected_AIA_flux: EM(t) = flux_obs/(tresp/px)
+    flux_obs is array of size (6,), tresp has size (6, len(temps)), output has shape(6,len(temps)'''
+    if type(trmatrix) !=np.array:
+        _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
+    pixsize_cm2=(arcsec_to_cm(0.6*u.arcsec).value)**2 #assume pixel size is .6"
+    return (flux_obs/(trmatrix/pixsize_cm2)).T #array
+    
+def plot_EM_loci_curves(flux_obs,trmatrix=False,plotter='matplotlib'):
+    if type(trmatrix) !=np.array:
+        _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
+    EM_loci=EM_loci_curves(flux_obs,trmatrix=trmatrix)
+    clrs=['darkgreen','darkcyan','gold','sienna','indianred','darkslateblue']
+    wavs=[94,131,171,193,211,335]
+
+    if plotter=='plotly':
+        ylabel="EM (cm<sup>3</sup>)"
+        xlabel="log<sub>10</sub>(T)"
+        fig=go.Figure()
+        for i,w in enumerate(wavs):
+            fig.add_trace(go.Scatter(x=tresp_logt,y=EM_loci[i],name=w,mode='lines',line=dict(color=clrs[i])))
+        fig.update_layout(yaxis_title=ylabel,xaxis_title=xlabel)
+        #if log:
+        fig.update_layout(yaxis_type='log')#,height=570,width=570)
+        fig.update_yaxes(showexponent = 'all',exponentformat = 'e')
+        #fig.show()
+    
+    else:
+        ylabel="EM (cm$^3$)"
+        xlabel="log$_{10}$(T)"
+        plt.rcParams.update({'font.size': 10})
+        fig,ax=plt.subplots()
+        for i,w in enumerate(wavs):
+            ax.plot(tresp_logt,EM_loci[i],label=str(w),color=clrs[i])
+        #if log:
+        ax.set_yscale('log')
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend(loc='upper right')
+        #ax.set_title(title)
+        #fig.show()
+        
+    return fig
 
 def thermal_energy_content(n,V,T):
-    '''E = 3NkT, N= n/V (units? SI) '''
+    '''E = 3NkT, N= n/V (units? SI => T in Kelvin, V in m^3, n in kg m^-3) '''
     return 3*constants.k*(n/V)*T
 
 def find_closest(vec, val, index=False):

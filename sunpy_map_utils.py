@@ -89,7 +89,7 @@ def get_corresponding_maps(mtimes,fhead='AIA/AIA20200912_2*_0335.fits'):
     return matchfiles,matchmaps
 
 
-def fits2mapIDL(files,coreg=True):
+def fits2mapIDL_old(files,coreg=True):
     '''run fits2map in idl. List of files should be: AIA094.fits, AIA171.fits,AIA211.fits'''
     idl = pidly.IDL('/Users/wheatley/Documents/Solar/sswidl_py.sh')
     idl('files',files)
@@ -104,6 +104,21 @@ def fits2mapIDL(files,coreg=True):
         idl('coreg_map211',coreg_map211)
         idl('map2fits,c171,coreg_map171')
         idl('map2fits,c211,coreg_map211')
+        
+def fits2mapIDL(files, reffile,coreg=True):
+    '''generalization of old fits2mapIDL to work with any number of input files'''
+    idl = pidly.IDL('/Users/wheatley/Documents/Solar/sswidl_py.sh')
+    idl('files',files)
+    idl('fits2map,files,maps')
+    idl('reffile',reffile)
+    idl('fits2map,reffile,refmap')
+    if coreg:
+        for i,f in enumerate(files):
+            outfilename=f[:-4]+'_coreg.fits'
+            idl('i',i)
+            idl('outfilename',outfilename)
+            idl('coregmap=coreg_map(maps[i],refmap)')
+            idl('map2fits,coregmap,outfilename') #would be nice if the meta was inheirited... in sunpy just reads as genericMap not AIAmap
 
 def coreg_maps_IDL(fits1,fits2,coreg=True,coreg_mapname='coreg_map.fits'):
     '''run fits2map in idl. List of files should be: AIA094.fits, AIA171.fits,AIA211.fits'''
@@ -130,7 +145,7 @@ def make_submaps(picklename,bl,tr):
         smaps.append(t.submap(bottom_left,top_right))
     return smaps
 
-def int_image(filelist, nint=15,outname='AIA_Fe18_2020-09-12_'):
+def int_image(filelist, nint=15,outname='AIA_Fe18_2020-09-12_',how='mean'):
     if type(filelist) == str: #it's a pickle of a list of maps...
         filelist=pickle.load(open(filelist,'rb'))
     #make sure these are sorted by date!
@@ -156,7 +171,10 @@ def int_image(filelist, nint=15,outname='AIA_Fe18_2020-09-12_'):
                 m=f
             if m.meta['exptime'] != 0.0:
                 mdata.append(m.data)
-        intdata=np.mean(mdata,axis=0)
+        if how == 'mean':
+            intdata=np.mean(mdata,axis=0)
+        elif how == 'sum':
+            intdata=np.sum(mdata,axis=0)
         map_int=sunpy.map.Map(intdata,m.meta)
         map_int.save(mapname)
         print("Integrated image saved in: %s", mapname)
@@ -201,8 +219,12 @@ def diff_maps(mlist):
 def fix_units(map_in):
     map_in.meta['cunit1']= 'arcsec'
     map_in.meta['cunit2']= 'arcsec'
-    map_in.meta['date_obs']= dt.strftime(dt.strptime(map_in.meta['date_obs'],'%d-%b-%Y %H:%M:%S.%f'),'%Y-%m-%dT%H:%M:%S')#fix the time string
-    map_in.meta['date-obs']= dt.strftime(dt.strptime(map_in.meta['date-obs'],'%d-%b-%Y %H:%M:%S.%f'),'%Y-%m-%dT%H:%M:%S')#fix the time string
+    try:
+        map_in.meta['date_obs']= dt.strftime(dt.strptime(map_in.meta['date_obs'],'%d-%b-%Y %H:%M:%S.%f'),'%Y-%m-%dT%H:%M:%S.%f')#fix the time string
+        map_in.meta['date-obs']= dt.strftime(dt.strptime(map_in.meta['date-obs'],'%d-%b-%Y %H:%M:%S.%f'),'%Y-%m-%dT%H:%M:%S.%f')#fix the time string
+    except ValueError: #grrrr
+        print(map_in.meta['date_obs'],map_in.meta['date-obs'])
+            #map_in.meta['date-obs']= dt.strftime(dt.strptime(map_in.meta['date-obs'],'%d-%m-%YT%H:%M:%S.%f'),'%Y-%m-%dT%H:%M:%S.%f')#fix the time string
     return map_in
     
 def hand_coalign(map_in,crpix1_off,crpix2_off):
@@ -313,11 +335,35 @@ def get_average_px_size_arcsec(smap):
     ny,nx=smaps[0].data.shape #x-axis is last
     return(np.mean([height.value/ny,width.value/nx]))
     
-def arcsec_to_cm(arcsec,earthsun):
+def arcsec_to_cm(arcsec,earthsun=False):
     ''' convert arcseconds to cm. return Quantity. angular_diameter_arcsec=radians_to_arcseconds * diameter/distance'''
     #deg_to_m=rsun.value*(np.pi) #rsun is in meters...
+    if not earthsun:
+        earthsun=u.Quantity(1.5049824e11,u.m)
     sigmaD=arcsec*earthsun.value
     rad2arcsec=(1.*u.rad).to(u.arcsec)
     mout=sigmaD/rad2arcsec *u.m #s= r*theta
     return mout.to(u.cm)
     
+def cm_to_arcsec(cm,earthsun=False):
+    ''' convert cm to arcseconds'''
+    #deg_to_m=rsun.value*(np.pi) #rsun is in meters...
+    if not earthsun:
+        earthsun=u.Quantity(1.5049824e11,u.m)
+    if type(cm) != u.Quantity:
+        cm=u.Quantity(cm,u.cm)
+    mmeters=cm.to(u.m)
+    rad2arcsec=(1.*u.rad).to(u.arcsec)
+    sigmaD = mmeters*rad2arcsec #s= r*theta
+    arcsec= sigmaD/earthsun
+    return arcsec#.to(u.arcsec)
+
+def get_circle_bltr(circle):
+    ''' circle is list of skycoords of a circle'''
+    xmin=np.min([x.Tx.value for x in circle])
+    xmax=np.max([x.Tx.value for x in circle])
+    ymin=np.min([x.Ty.value for x in circle])
+    ymax=np.max([x.Ty.value for x in circle])
+    bl=SkyCoord(xmin*u.arcsec,ymin*u.arcsec,frame=circle.frame)
+    tr=SkyCoord(xmax*u.arcsec,ymax*u.arcsec,frame=circle.frame)
+    return bl,tr
