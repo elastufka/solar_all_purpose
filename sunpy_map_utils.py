@@ -243,7 +243,7 @@ def center_of_mass(X):
     cy = ((y[:-1] + y[1:])*g).sum()
     return 1./(6*A)*np.array([cx,cy])
 
-def find_centroid_from_map(m,levels=[90],idx=0,show=False):
+def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False):
     cs,hpj_cs=[],[]
     ll=np.max(m.data)*np.array(levels)
 
@@ -258,7 +258,14 @@ def find_centroid_from_map(m,levels=[90],idx=0,show=False):
     ax.plot(c[0],c[1], marker="o", markersize=12, color="red")
     if show:
         fig.show()
-    return cs,hpj_cs,contour
+    if return_as_mask:
+        from skimage.draw import polygon
+        rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
+        mask=np.zeros(m.data.T.shape)
+        mask[rr,cc]=1
+        return ~mask.T.astype(bool)
+    else:
+        return cs,hpj_cs,contour
         
 def str_to_SkyCoord(in_str): #for when restoring from json etc
     clist=in_str[in_str.rfind('(')+1:-2].split(',')

@@ -40,6 +40,54 @@ def argmin2D(input_array):
     y=input_array.min(axis=0).argmin()
     return [x,y]
     
+def get_XRT_resp(tr_logt, date, filter='Be-Thin'):
+    '''run tresp_be_thin43 in IDL. from ssw documentation:
+    INPUTS:
+    ;
+    ;       TE     - (float array) log Temperature with a range from 5.0 to 8.0.
+    ;       FW1    - (long) Filter No. on filter wheel 1.
+    ;       FW2    - (long) Filter No. on filter wheel 2.
+    ;       TIME   - (string) Time when you want to calcurate the XRT flux,
+    ;                because XRT flux influenced by contamination is a function of time.
+    ;                This time is used to derive the thickness of contaminant.
+    ;                If you directly give the contamination thickness with CONTAMINATION_THICKNESS
+    ;                keyword, you should omit this TIME input.
+    ;       VEM        - [Optional input] (float) volume emission measure [cm^-3] of solar plasma in logalithmic scale (e.g., VEM = 44. for 1e44 [cm^-3]).
+     OUTPUTS:
+    ;
+    ;       return - (float array) DN flux [DN sec^-1 pixel^-1] (for CEM = 1 [cm^-5] in default).
+    ; NOTES:
+    ;
+    ;       filter on filter wheel 1
+    ;         0: open
+    ;         1: thin-Al-poly
+    ;         2: C-poly
+    ;         3: thin-Be
+    ;         4: med-Be
+    ;         5: med-Al
+    ;
+    ;       filter on filter wheel 2
+    ;         0: open
+    ;         1: thin-Al-mesh
+    ;         2: Ti-poly
+    ;         3: G-band (optical)
+    ;         4: thick-Al
+    ;         5: thick-Be
+    '''
+    idl = pidly.IDL('/Users/wheatley/Documents/Solar/sswidl_py.sh')
+    idl('tr_logt',tr_logt)
+    idl('date',date)
+    if filter == 'Be-Thin':
+        fw1=3
+        fw2=0
+    idl('fw1',fw1)
+    idl('fw2',fw2)
+    idl('xrt_resp=xrt_flux(tr_logt,fw1,fw2,date,vem=43.)') #units DN s^-1 px^-1
+    tresp=idl.xrt_resp
+    tresp_cm5=tresp/(1e43)
+    return tresp
+    
+
 def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp_logt=False, perpixel=True):
     '''EM (cm^-3) = F*S/R(T)
     F: flux DN s^-1 px^-1

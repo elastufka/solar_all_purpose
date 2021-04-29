@@ -91,6 +91,22 @@ def plot_dem_2D(df,what='DEM'):
     return fig
 
 
+def all_six_AIA(aialist,unmask=True):
+    fig = plt.figure(figsize=(20, 7))
+    for i, m in enumerate(aialist):
+        ax = fig.add_subplot(1,6, i+1, projection=m.wcs)
+        if unmask and m.mask.any():
+            m.mask=None
+        m.plot(axes=ax,title=m.meta['wavelnth'])
+        xax = ax.coords[0]
+        yax = ax.coords[1]
+        if i !=3:
+            xax.set_axislabel('')
+        if i !=0:
+            yax.set_axislabel('')
+            ax.set_yticklabels([])
+            
+
 def dem_image(df,T):
     '''T is string temperature '''
     fig=px.imshow(df['dem_' + str(T)][0])

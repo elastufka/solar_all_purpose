@@ -249,6 +249,14 @@ def get_dataval(wdf,timestamp,key="data",filenames=False):
         val={'data':wdf.data[close_times],'filenames':wdf.filenames[close_times]}
     return val
     
+def single_time_indices(df,timestamp,wavs=[94,131,171,193,211,335]):
+    ''' return indices corresponding to closest matches'''
+    indices=[]
+    for w in wavs:
+        wdf=df.where(df.wavelength==w).dropna(how='all')
+        indices.append(np.argmin(np.abs(wdf.timestamps - timestamp)))
+    return indices
+    
 def integrated_difference(w, aiamaps, bl, tr, timerange1,timerange2, tag=None):
     mlistp= [m.submap(bl,tr) for m in aiamaps if timerange1[0] <= dt.strptime(m.meta['date-obs'],'%Y-%m-%dT%H:%M:%S.%f') <=timerange1[1]]#list of maps in the correct time range
     mlistk= [m.submap(bl,tr) for m in aiamaps if timerange2[0] <= dt.strptime(m.meta['date-obs'],'%Y-%m-%dT%H:%M:%S.%f') <=timerange2[1]]#list of maps
@@ -347,9 +355,13 @@ def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=True, d
             mdiff=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits')
     except ValueError:
         print('Could not make difference image, using peak flare image only')
-        mdiff=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits') #this is the appropriate submap
+        try:
+            mdiff=sunpy.map.Map('AIA/AIA_'+str(wavelength)+'_flare_'+tag+'00.fits') #this is the appropriate submap
+        except ValueError:
+            mdiff=submap
     if submap:
-        mdiff=mdiff.submap(submap[0],submap[1])
+        if type(submap) == list:
+            mdiff=mdiff.submap(submap[0],submap[1])
 
     cs,hpj_cs,contour=find_centroid_from_map(mdiff,levels=contour,show=False)
     rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
