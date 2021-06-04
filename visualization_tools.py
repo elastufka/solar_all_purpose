@@ -13,6 +13,8 @@ import plotly.colors
 import plotly.io as pio
 import plotly.express as px
 
+import seaborn as sns
+
 def get_continuous_color(colorscale, intermed):
     """
     Plotly continuous colorscales assign colors to the range [0, 1]. This function computes the intermediate
@@ -111,3 +113,17 @@ def dem_image(df,T):
     '''T is string temperature '''
     fig=px.imshow(df['dem_' + str(T)][0])
     return fig
+
+def corr_plot(df):
+    corr = df.corr()
+    # Generate a mask for the upper triangle
+    mask = np.triu(np.ones_like(corr, dtype=bool))
+    # Set up the matplotlib figure
+    f, ax = plt.subplots(figsize=(11, 9))
+    # Generate a custom diverging colormap
+    cmap = sns.diverging_palette(230, 20, as_cmap=True)
+    # Draw the heatmap with the mask and correct aspect ratio
+    sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
+            square=True, linewidths=.5, cbar_kws={"shrink": .5})
+    return f
+

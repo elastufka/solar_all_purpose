@@ -20,7 +20,7 @@ import plotly.graph_objects as go
 import matplotlib
 from matplotlib import cm
 import pidly
-from sunpy.physics.differential_rotation import solar_rotate_coordinate, diffrot_map
+from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
 from skimage.transform import downscale_local_mean
 from scipy.ndimage import sobel
 import pickle
@@ -179,6 +179,43 @@ def int_image(filelist, nint=15,outname='AIA_Fe18_2020-09-12_',how='mean'):
         map_int.save(mapname)
         print("Integrated image saved in: %s", mapname)
         
+def int_map(filelist, nint='all',how='mean'):
+    '''time-integrate more than one map'''
+    #make sure these are sorted by date!
+    dates=[m.meta['date-obs'] for m in filelist]
+    zipped_lists = zip(dates, filelist)
+    sorted_pairs = sorted(zipped_lists)
+    tuples = zip(*sorted_pairs)
+    _,filelist = [ list(tuple) for tuple in tuples]
+    maps_int=[]
+    for i,f in enumerate(filelist):
+        if nint !='all':
+            st=i*nint
+            nd=(i+1)*nint
+        else:
+            st=0
+            nd=-1
+        try:
+            foo=filelist[nd]
+        except IndexError:
+            print(nd,' out of index!')
+            break #exits the loop?
+        mdata=[]
+        for f in filelist[st:nd]:
+            if type(f) == str:
+                m=sunpy.map.Map(f)
+            else:
+                m=f
+            if m.meta['exptime'] != 0.0:
+                mdata.append(m.data)
+        if how == 'mean':
+            intdata=np.mean(mdata,axis=0)
+        elif how == 'sum':
+            intdata=np.sum(mdata,axis=0)
+        map_int=sunpy.map.Map(intdata,m.meta)
+        maps_int.append(map_int)
+    return maps_int
+        
 def bin_single_image(im,n=2):
     ''' spatially bin image in n x n bins, crop array if it doesnt fit.'''
     #REWRITE!!
@@ -243,20 +280,19 @@ def center_of_mass(X):
     cy = ((y[:-1] + y[1:])*g).sum()
     return 1./(6*A)*np.array([cx,cy])
 
-def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False):
+def find_centroid_from_map(m,levels=[90],idx=0,show=True, return_as_mask=False):
     cs,hpj_cs=[],[]
     ll=np.max(m.data)*np.array(levels)
-
-    fig,ax=plt.subplots()
-    ax.imshow(m.data,alpha=.75,cmap=m.plot_settings['cmap'])
-    contour=m.draw_contours(levels=levels*u.percent,axes=ax,frame=m.coordinate_frame)
-    print(len(contour.allsegs[-1]))
-    c =  center_of_mass(contour.allsegs[-1][idx])
-    cs.append(c)
-    hpj=m.pixel_to_world(c[0]*u.pixel,c[1]*u.pixel,origin=0)
-    hpj_cs.append(hpj)
-    ax.plot(c[0],c[1], marker="o", markersize=12, color="red")
     if show:
+        fig,ax=plt.subplots()
+        ax.imshow(m.data,alpha=.75,cmap=m.plot_settings['cmap'])
+        contour=m.draw_contours(levels=levels*u.percent,axes=ax,frame=m.coordinate_frame)
+        print(len(contour.allsegs[-1]))
+        c =  center_of_mass(contour.allsegs[-1][idx])
+        cs.append(c)
+        hpj=m.pixel_to_world(c[0]*u.pixel,c[1]*u.pixel,origin=0)
+        hpj_cs.append(hpj)
+        ax.plot(c[0],c[1], marker="o", markersize=12, color="red")
         fig.show()
     if return_as_mask:
         from skimage.draw import polygon

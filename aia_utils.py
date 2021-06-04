@@ -20,9 +20,10 @@ import plotly.graph_objects as go
 import matplotlib
 from matplotlib import cm
 import pidly
-from sunpy.physics.differential_rotation import solar_rotate_coordinate, diffrot_map
+from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
 
 from flux_in_boxes import track_region_box
+from sunpy_map_utils import find_centroid_from_map
 
 def aia_prep(files,zip_old=True):
     '''run AIA prep on given files, clean up'''
@@ -172,7 +173,7 @@ def plot_and_save(mlist,subcoords=False,outname='STEREO_orbit8_',creverse=True,v
         fig.savefig(outname+str(i).zfill(2)+'.png')
     #return submaps
     
-def make_single_dfaia(maplist,mask=False,mask_data=False,force_mask=False, verbose=False,how='mean'):
+def make_single_dfaia(maplist,mask=False,mask_data=False,force_mask=False, verbose=False,how=np.ma.mean):
     '''same as amke_simple_dfaia but for a single timestep '''
     pdicts=[]
     for i,w in enumerate([94,131,171,193,211,335]):
@@ -187,7 +188,7 @@ def make_single_dfaia(maplist,mask=False,mask_data=False,force_mask=False, verbo
 
     return dfaia
 
-def make_simple_dfaia(submap= False,timerange=['20120912_09','20120912_'],folder='/Users/wheatley/Documents/Solar/NuStar/orbit8/AIA',to_json=False, mask=False, mask_data=False, force_mask=True,verbose=False,how='mean'):
+def make_simple_dfaia(submap= False,timerange=['20120912_09','20120912_'],folder='/Users/wheatley/Documents/Solar/NuStar/orbit8/AIA',to_json=False, mask=False, mask_data=False, force_mask=True,verbose=False,how=np.ma.mean):
     '''make the dataframe with just the unmasked data for given timerange'''
     wavs=[94,131,171,193,211,335]
     if submap:
@@ -339,7 +340,7 @@ def make_aia_mask(preflare_tr, flare_tr, flare_box, qs_box, tag=None,sigma=3,plo
 
     return masks, mask_plus,mask_minus
     
-def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=True, diff=True):
+def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=False, diff=True):
     '''make mask from to n% brightest pixels in selected wavelength image '''
     from skimage.draw import polygon
     if not tag:
@@ -363,7 +364,7 @@ def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=True, d
         if type(submap) == list:
             mdiff=mdiff.submap(submap[0],submap[1])
 
-    cs,hpj_cs,contour=find_centroid_from_map(mdiff,levels=contour,show=False)
+    cs,hpj_cs,contour=find_centroid_from_map(mdiff,levels=contour,show=plot)
     rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
     mask=np.zeros(mdiff.data.T.shape)
     mask[rr,cc]=1
@@ -468,3 +469,47 @@ def make_total_masks(df):
         df['timestamps']=pd.to_datetime(df.timestamps)
     
     return df
+
+def aia_maps_tint(dfaia,timerange=["2020-09-12T20:40:00","2020-09-12T20:41:00"],how=np.nanmean):
+    '''Get AIA data for selected timerange, from dataframe containing maps '''
+    tstart=dt.strptime(timerange[0],"%Y-%m-%dT%H:%M:%S")
+    tend=dt.strptime(timerange[1],"%Y-%m-%dT%H:%M:%S")
+
+    #AIA
+    #dfaia.timestamps=pd.to_datetime(dfaia.timestamps)
+    tidx=dfaia.query("timestamps >= @tstart and timestamps <= @tend") #dataframe
+    if len(tidx.index) == 6: #more than 1 timestamp
+        print('only one timestamp')
+        tidx.sort_values('wavelength',inplace=True)
+        aiamaps=list(tidx.maps)
+    else:
+        gdf=tidx.groupby('wavelength')
+        aiamaps=[]
+        for w in [94,131,171,193,211,335]:
+            gg=gdf.get_group(w).maps
+            try:
+                meanmap=sunpy.map.Map(np.nanmean([g.data for g in gg],axis=0),gg.iloc[0].meta)
+                print('all maps same dimensions')
+            except ValueError: #dimension mismatch
+                print('warning: dimension missmatch, correcting...')
+                smallest_x=np.min([g.data.shape[0] for g in gg])
+                smallest_y=np.min([g.data.shape[1] for g in gg])
+                trimmed_mapdata=[]
+                for g in gg:
+                    if g.data.shape[0] != smallest_x:
+                        dx=g.data.shape[0]-smallest_x
+                        mdata=g.data[dx:,:]
+                    else:
+                        mdata=g.data
+                    if mdata.shape[1] != smallest_y:
+                        dy=g.data.shape[1]-smallest_y
+                        mmdata=mdata[:,dy:]
+                    else:
+                        mmdata=mdata
+                    trimmed_mapdata.append(mmdata)
+                #print(w,np.nanmean(trimmed_mapdata,axis=0).shape,gg.iloc[0].meta['date-obs'])
+                meanmap=sunpy.map.Map(how(trimmed_mapdata,axis=0),gg.iloc[0].meta)
+            #print(type(meanmap))
+            aiamaps.append(meanmap)
+    return aiamaps
+
