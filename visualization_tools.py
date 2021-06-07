@@ -61,6 +61,35 @@ def continuous_colors(cscale='Plotly3',ncolors=256):
     colorscale = plotly.colors.make_colorscale(plotly3_colors)
     return [get_continuous_color(colorscale, intermed=i/ncolors) for i in range(ncolors)]
 
+def get_flagcolors():
+    flagcolors={}
+    flagcolors['bi']=["#ff0080","#ff0080","#a349a4","#0000ff"]
+    flagcolors['philadelphia']=['#000000','#784F17','#FF0018','#FFA52C','#FFFF41','#008018','#0000F9','#86007D']
+    flagcolors['rainbow']=['#FF0018','#FFA52C','#FFFF41','#008018','#0000F9','#86007D']
+    flagcolors['trans']=['#55CDFC','#FFFFFF','#F7A8B8']
+    flagcolors['asexual']=['#000000', '#A4A4A4', '#FFFFFF','#810081']
+    flagcolors['aromantic']=['#000000','#339933','#ffff66','#99cc66','#999999']
+    flagcolors['lesbian_new']=['#D62900', '#FF9B55', '#FFFFFF', '#D461A6', '#A50062']
+    flagcolors['pan']=['#FF1B8D','#FFDA00','#1BB3FF']
+    return flagcolors
+    
+def set_pride_template(flag='philadelphia'):
+    flagcolors=get_flagcolors()
+    pio.templates["pride"] = go.layout.Template(layout_colorway=flagcolors[flag])
+    pio.templates.default = "pride"
+
+def pride_colors_plotly(flag='philadelphia',continuous_colorscale=False):
+    flagcolors=get_flagcolors()
+    if not continuous_colorscale:
+        return flagcolors[flag] #discrete list
+    else:
+        colorscale = plotly.colors.make_colorscale(flagcolors[flag])
+    return [get_continuous_color(colorscale, intermed=i/256) for i in range(256)]
+    
+def pride_colors_matplotlib(flag='philadelphia'):
+    flagcolors=get_flagcolors()
+    return matplotlib.colors.LinearSegmentedColormap.from_list("", flagcolors[flag])
+
 def dark_mode():
     '''activate dark pallette for matplotlib and plotly'''
     plt.style.use('dark_background')

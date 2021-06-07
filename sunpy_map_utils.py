@@ -23,6 +23,7 @@ import pidly
 from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
 from skimage.transform import downscale_local_mean
 from scipy.ndimage import sobel
+from skimage.measure import find_contours
 import pickle
 
 def get_limbcoords(aia_map):
@@ -268,6 +269,13 @@ def hand_coalign(map_in,crpix1_off,crpix2_off):
     map_in.meta['crpix1']=map_in.meta['crpix1']+ crpix1_off
     map_in.meta['crpix2']=map_in.meta['crpix2']+ crpix2_off
     return map_in
+    
+def scale_skycoord(coord,sf):
+    '''scale SkyCoord x and y by given scaling factor. can't modify object in-place (boo astropy) so have to make a new coord based off the old one instead...'''
+    cx=sf*coord.Tx
+    cy=sf*coord.Ty
+    newcoord=SkyCoord(cx,cy,frame=coord.frame)
+    return newcoord
 
 #get actual contour centroids...from find_hessi_centroids.py
 def center_of_mass(X):
@@ -279,29 +287,55 @@ def center_of_mass(X):
     cx = ((x[:-1] + x[1:])*g).sum()
     cy = ((y[:-1] + y[1:])*g).sum()
     return 1./(6*A)*np.array([cx,cy])
+    
+def skimage_contour(map,level=90):
+    ''' use skimage find_contour instead so I can avoid plotting if need be'''
+    contours=find_contours(map.data,(level/100.)*np.max(map.data))
+    # Select the largest contiguous contour
+    largest_contour = sorted(contours, key=lambda x: len(x))[-1]
+    return largest_contour #can do same polygon operations on this now
 
-def find_centroid_from_map(m,levels=[90],idx=0,show=True, return_as_mask=False):
+def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False,method='skimage'):
     cs,hpj_cs=[],[]
     ll=np.max(m.data)*np.array(levels)
-    if show:
+    
+    if method == 'skimage':
+        largest_contour=skimage_contour(m.data,levels[0])
+    
+    else: #use matplotlib
         fig,ax=plt.subplots()
         ax.imshow(m.data,alpha=.75,cmap=m.plot_settings['cmap'])
         contour=m.draw_contours(levels=levels*u.percent,axes=ax,frame=m.coordinate_frame)
-        print(len(contour.allsegs[-1]))
-        c =  center_of_mass(contour.allsegs[-1][idx])
-        cs.append(c)
-        hpj=m.pixel_to_world(c[0]*u.pixel,c[1]*u.pixel,origin=0)
-        hpj_cs.append(hpj)
+        #print(len(contour.allsegs[-1]))
+        largest_contour = sorted(contour.allsegs, key=lambda x: len(x))[-1][0]
+        #largest_contour=contour.allsegs[-1][0]
+    c =  center_of_mass(largest_contour)
+    cs.append(c)
+    hpj=m.pixel_to_world(c[0]*u.pixel,c[1]*u.pixel,origin=0)
+    hpj_cs.append(hpj)
+    if show:
+        fig,ax=plt.subplots()
+        ax.imshow(m.data,alpha=.75,cmap=m.plot_settings['cmap'])
         ax.plot(c[0],c[1], marker="o", markersize=12, color="red")
+        ax.plot(largest_contour[:,1],largest_contour[:,0])
         fig.show()
     if return_as_mask:
         from skimage.draw import polygon
-        rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
+        rr,cc=polygon(largest_contour[:,0],largest_contour[:,1])
+        #rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
         mask=np.zeros(m.data.T.shape)
         mask[rr,cc]=1
         return ~mask.T.astype(bool)
     else:
-        return cs,hpj_cs,contour
+        return cs,hpj_cs,largest_contour
+        
+#def largest_contour_mask_from_map(map_in,contour=[90],show=False):
+#    from skimage.draw import polygon
+#    cs,hpj_cs,contour=find_centroid_from_map(map_in,levels=contour,show=show)
+#    rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
+#    mask=np.zeros(map_in.data.T.shape)
+#    mask[rr,cc]=1
+#    return ~mask.T.astype(bool)
         
 def str_to_SkyCoord(in_str): #for when restoring from json etc
     clist=in_str[in_str.rfind('(')+1:-2].split(',')
