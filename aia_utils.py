@@ -23,7 +23,42 @@ import pidly
 from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
 
 from flux_in_boxes import track_region_box
-from sunpy_map_utils import find_centroid_from_map
+from sunpy_map_utils import find_centroid_from_map, make_submaps
+#from aiapy.calibrate import *
+#from aiapy.response import Channel
+
+def aia_prep_py(files,expnorm=True,tofits=True):
+    '''aia_prep using aiapy instead of IDL
+    from https://aiapy.readthedocs.io/en/latest/generated/gallery/prepping_level_1_data.html'''
+    for f in files:
+        m= sunpy.map.Map(f)
+        m_updated_pointing = update_pointing(m)
+        m_registered = register(m_updated_pointing)
+        if expnorm:
+            m_out = normalize_exposure(m_registered)
+        else:
+            m_out=m_registered
+        if tofits: #save to fitsfile
+            fname=f[:-4]+'_prepped.fits'
+            m.save(fname,'.fits')
+    if not tofits:
+        return maplist
+    
+def aia_correct_degradation(maplist):
+    '''correct for telescope degradation over time
+    from https://aiapy.readthedocs.io/en/latest/generated/gallery/skip_correct_degradation.html
+    (how slow is this actually?)'''
+    correction_table = get_correction_table()
+    maps_corrected = [correct_degradation(m, correction_table=correction_table) for m in maplist]
+    return maps_corrected
+    
+def get_aia_response_py(obstime,traxis,channels=[94,131,171,193,211,335]):
+    '''using AIApy instead of ssw - still need to convert this to a temperature response not a wavelength response! (need chiantifix for that, not yet implemented boo)
+    https://aiapy.readthedocs.io/en/latest/generated/gallery/calculate_response_function.html'''
+    for c in channels:
+        chan = Channel(c*u.angstrom)
+        r = chan.wavelength_response(obstime=obstime, include_eve_correction=True)
+    return trmatrix
 
 def aia_prep(files,zip_old=True):
     '''run AIA prep on given files, clean up'''
@@ -340,6 +375,50 @@ def make_aia_mask(preflare_tr, flare_tr, flare_box, qs_box, tag=None,sigma=3,plo
 
     return masks, mask_plus,mask_minus
     
+def plot_AIA_lightcurves(dfaiam3,rolling=False, group=False, get_traces=False, yrange=[.6,1.75],pcolors=[]):
+    mode='lines+markers'
+    traces=[]
+    fig = make_subplots(rows=3, cols=1, start_cell="top-left",shared_xaxes=True)
+    for i,ids in enumerate(dfaiam3.wavelength.unique()):
+        df=dfaiam3.where(dfaiam3.wavelength == ids).dropna(how='all')
+        df.sort_values('timestamps',inplace=True)
+        if rolling:
+            fp=df.flux_plus.rolling(rolling).mean()/df.mask_plus_px.max()
+            fm=df.flux_minus.rolling(rolling).mean()/df.mask_minus_px.max()
+            ft=df.flux_total.rolling(rolling).mean()/df.total_mask_px.max()
+            tvec= [df.timestamps.iloc[i] for i in range(len(df.timestamps)) if i % rolling == rolling-1]#1 in every n timestamps, rightmost value
+        elif group: #groupby every n indices... not yet implemented
+            gdf=df.groupby(df.index // group).mean()
+            fp=gdf.flux_plus/df.mask_plus_px.max()
+            fm=gdf.flux_minus/df.mask_minus_px.max()
+            ft=gdf.flux_total/df.total_mask_px.max()
+            tvec= [df.timestamps.iloc[i] for i in range(len(df.timestamps)) if i % group == group-1]#1 in every n timestamps, rightmost value
+        else:
+            fp=df.flux_plus/df.mask_plus_px.max()
+            fm=df.flux_minus/df.mask_minus_px.max()
+            ft=df.flux_total/df.total_mask_px.max()
+            tvec=df.timestamps #1 in every n timestamps...
+        
+        #unmasked=df.total_mask_px.max()
+        #flux_adj=df.fluxes/unmasked#/df.cutout_shape #don't need when mask is same
+        fig.add_trace(go.Scatter(x=tvec,y=fp/np.mean(fp),mode=mode,name='AIA '+str(int(ids))+' brightening',line=dict(color=pcolors[i])),row=1,col=1)
+        fig.add_trace(go.Scatter(x=tvec,y=fm/np.mean(fm),mode=mode,name='AIA '+str(int(ids))+' dimming',line=dict(color=pcolors[i])),row=2,col=1)
+        ttrace=go.Scatter(x=tvec,y=ft/np.mean(ft),mode=mode,name='AIA '+str(int(ids)),line=dict(color=pcolors[i]))
+        traces.append(ttrace)
+        fig.add_trace(ttrace,row=3,col=1)
+
+    for r in range(1,4):
+        fig.update_yaxes(range=yrange,row=r,col=1)
+
+    fig.update_layout(yaxis_title='Brightening',title='Flux/Mean Flux, Box 2')
+    fig.update_yaxes(title='Dimming',row=2,col=1)
+    fig.update_yaxes(title='Total',row=3,col=1)
+    
+    if get_traces:
+        return traces
+    return fig
+
+    
 def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=False, diff=True):
     '''make mask from to n% brightest pixels in selected wavelength image '''
     from skimage.draw import polygon
@@ -364,11 +443,11 @@ def make_contour_mask(wavelength,submap=False,tag=None,contour=[90],plot=False, 
         if type(submap) == list:
             mdiff=mdiff.submap(submap[0],submap[1])
 
-    cs,hpj_cs,contour=find_centroid_from_map(mdiff,levels=contour,show=plot)
-    rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
-    mask=np.zeros(mdiff.data.T.shape)
-    mask[rr,cc]=1
-    return ~mask.T.astype(bool)
+    mask=find_centroid_from_map(mdiff,levels=contour,show=plot,method='skimage',return_as_mask=True)
+    #rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
+    #mask=np.zeros(mdiff.data.T.shape)
+    #mask[rr,cc]=1
+    return mask #~mask.T.astype(bool)
     
 def plot_aia_masks(maskpickle,tag=False):
     if not tag:
@@ -399,8 +478,8 @@ def make_masked_df(flare_box,masks=False,mask_plus=False,mask_minus=False,tag=No
     #flare_box=[(-610, 30), (-550, 90)]
     if not tag:
         tag=''
-    if not masks and not mask_minus and not mask_plus:
-        masks, mask_plus,mask_minus=pickle.load(open('all_masks_source1.p','rb'))
+    #if not masks and not mask_minus and not mask_plus:
+    #    masks, mask_plus,mask_minus=pickle.load(open('all_masks_source1.p','rb'))
 
     dfs=[]
     #tdicts,pdicts,mdicts=[],[],[]
@@ -470,7 +549,7 @@ def make_total_masks(df):
     
     return df
 
-def aia_maps_tint(dfaia,timerange=["2020-09-12T20:40:00","2020-09-12T20:41:00"],how=np.nanmean):
+def aia_maps_tint(dfaia,timerange=["2020-09-12T20:40:00","2020-09-12T20:41:00"],how=np.nanmean,wavs=[94,131,171,193,211,335]):
     '''Get AIA data for selected timerange, from dataframe containing maps '''
     tstart=dt.strptime(timerange[0],"%Y-%m-%dT%H:%M:%S")
     tend=dt.strptime(timerange[1],"%Y-%m-%dT%H:%M:%S")
@@ -478,14 +557,14 @@ def aia_maps_tint(dfaia,timerange=["2020-09-12T20:40:00","2020-09-12T20:41:00"],
     #AIA
     #dfaia.timestamps=pd.to_datetime(dfaia.timestamps)
     tidx=dfaia.query("timestamps >= @tstart and timestamps <= @tend") #dataframe
-    if len(tidx.index) == 6: #more than 1 timestamp
+    if len(tidx.index) == len(wavs): #more than 1 timestamp
         print('only one timestamp')
         tidx.sort_values('wavelength',inplace=True)
         aiamaps=list(tidx.maps)
     else:
         gdf=tidx.groupby('wavelength')
         aiamaps=[]
-        for w in [94,131,171,193,211,335]:
+        for w in wavs:
             gg=gdf.get_group(w).maps
             try:
                 meanmap=sunpy.map.Map(np.nanmean([g.data for g in gg],axis=0),gg.iloc[0].meta)

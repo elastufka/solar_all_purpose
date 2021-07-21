@@ -5,6 +5,7 @@ from matplotlib import cm
 import numpy as np
 import pandas as pd
 
+from astropy import units as u
 from datetime import datetime as dt
 import glob
 import plotly.graph_objects as go
@@ -14,92 +15,44 @@ import plotly.io as pio
 import plotly.express as px
 
 import seaborn as sns
-
-def get_continuous_color(colorscale, intermed):
-    """
-    Plotly continuous colorscales assign colors to the range [0, 1]. This function computes the intermediate
-    color for any value in that range.
-
-    Plotly doesn't make the colorscales directly accessible in a common format.
-    Some are ready to use:
-    
-        colorscale = plotly.colors.PLOTLY_SCALES["Greens"]
-
-    Others are just swatches that need to be constructed into a colorscale:
-
-        viridis_colors, scale = plotly.colors.convert_colors_to_same_type(plotly.colors.sequential.Viridis)
-        colorscale = plotly.colors.make_colorscale(viridis_colors, scale=scale)
-
-    :param colorscale: A plotly continuous colorscale defined with RGB string colors.
-    :param intermed: value in the range [0, 1]
-    :return: color in rgb string format
-    :rtype: str
-    """
-    if len(colorscale) < 1:
-        raise ValueError("colorscale must have at least one color")
-
-    if intermed <= 0 or len(colorscale) == 1:
-        return colorscale[0][1]
-    if intermed >= 1:
-        return colorscale[-1][1]
-
-    for cutoff, color in colorscale:
-        if intermed > cutoff:
-            low_cutoff, low_color = cutoff, color
-        else:
-            high_cutoff, high_color = cutoff, color
-            break
-
-    # noinspection PyUnboundLocalVariable
-    return plotly.colors.find_intermediate_color(
-        lowcolor=low_color, highcolor=high_color,
-        intermed=((intermed - low_cutoff) / (high_cutoff - low_cutoff)),
-        colortype="rgb")
+from pride_colors import *
         
 def continuous_colors(cscale='Plotly3',ncolors=256):
     plotly3_colors, _ = plotly.colors.convert_colors_to_same_type(plotly.colors.sequential.__dict__[cscale])
     colorscale = plotly.colors.make_colorscale(plotly3_colors)
     return [get_continuous_color(colorscale, intermed=i/ncolors) for i in range(ncolors)]
 
-def get_flagcolors():
-    flagcolors={}
-    flagcolors['bi']=["#ff0080","#ff0080","#a349a4","#0000ff"]
-    flagcolors['philadelphia']=['#000000','#784F17','#FF0018','#FFA52C','#FFFF41','#008018','#0000F9','#86007D']
-    flagcolors['rainbow']=['#FF0018','#FFA52C','#FFFF41','#008018','#0000F9','#86007D']
-    flagcolors['trans']=['#55CDFC','#FFFFFF','#F7A8B8']
-    flagcolors['asexual']=['#000000', '#A4A4A4', '#FFFFFF','#810081']
-    flagcolors['aromantic']=['#000000','#339933','#ffff66','#99cc66','#999999']
-    flagcolors['lesbian_new']=['#D62900', '#FF9B55', '#FFFFFF', '#D461A6', '#A50062']
-    flagcolors['pan']=['#FF1B8D','#FFDA00','#1BB3FF']
-    return flagcolors
-    
-def set_pride_template(flag='philadelphia'):
-    flagcolors=get_flagcolors()
-    pio.templates["pride"] = go.layout.Template(layout_colorway=flagcolors[flag])
-    pio.templates.default = "pride"
-
-def pride_colors_plotly(flag='philadelphia',continuous_colorscale=False):
-    flagcolors=get_flagcolors()
-    if not continuous_colorscale:
-        return flagcolors[flag] #discrete list
-    else:
-        colorscale = plotly.colors.make_colorscale(flagcolors[flag])
-    return [get_continuous_color(colorscale, intermed=i/256) for i in range(256)]
-    
-def pride_colors_matplotlib(flag='philadelphia'):
-    flagcolors=get_flagcolors()
-    return matplotlib.colors.LinearSegmentedColormap.from_list("", flagcolors[flag])
-
-def dark_mode():
+def dark_mode(mpl=True,do_plotly=True):
     '''activate dark pallette for matplotlib and plotly'''
-    plt.style.use('dark_background')
-    pio.templates.default = "plotly_dark"#"ggplot2"#"plotly_dark"
+    if mpl:
+        plt.style.use('dark_background')
+    if do_plotly:
+        pio.templates.default = "plotly_dark"#"ggplot2"#"plotly_dark"
+        
+def get_plotly_current_template():
+    return pio.templates.default
     
-def default_mode():
+def default_mode(mpl=True,do_plotly=True):
     '''activate default pallette for matplotlib and plotly'''
+    if mpl:
+        plt.style.use('default')
+    if do_plotly:
+        pio.templates.default = "plotly"#"ggplot2"#"plotly_dark"
+
+def plotly_figsize(width=800,height=500):
+    '''set default figure size for plotly figures'''
+    current_template=get_plotly_current_template()
+    tt=pio.templates[current_template]
+    tt.layout['width']=width
+    tt.layout['height']=height
+    #tt.layout.paper_bgcolor='gray'
+    
+
+def plotly_logscale(xaxis=True,yaxis=True):
+    '''set default log scale on indicated axis, with scientific notation'''
     plt.style.use('default')
     pio.templates.default = "plotly"#"ggplot2"#"plotly_dark"
-    
+
 def plot_dem_2D(df,what='DEM'):
     ''' plot stuff in the DEM dataframe'''
     
@@ -122,13 +75,25 @@ def plot_dem_2D(df,what='DEM'):
     return fig
 
 
-def all_six_AIA(aialist,unmask=True):
+def all_six_AIA(aialist,unmask=True, use_mask=False,zoom=5, draw_contour=False):
     fig = plt.figure(figsize=(20, 7))
     for i, m in enumerate(aialist):
         ax = fig.add_subplot(1,6, i+1, projection=m.wcs)
         if unmask and m.mask.any():
             m.mask=None
+        if type(use_mask) == np.ndarray:
+            newdata=~use_mask*m.data
+            nzx,nzy=np.where(newdata !=0)
+            #nzx=[p[0] for p in nzpx]
+            #nzy=[p[1] for p in nzpx]
+            bl=m.pixel_to_world((np.min(nzx)-zoom)*u.pixel,(np.min(nzy)-zoom)*u.pixel)
+            tr=m.pixel_to_world((zoom+np.max(nzx))*u.pixel,(zoom+np.max(nzy))*u.pixel)
+            #print(bl,tr)
+            newmap=sunpy.map.Map(newdata,m.meta).submap(bl,tr)
+            m=newmap
         m.plot(axes=ax,title=m.meta['wavelnth'])
+        if draw_contour != False:
+            contour=m.draw_contours(levels=[draw_contour]*u.percent,axes=ax,frame=m.coordinate_frame)
         xax = ax.coords[0]
         yax = ax.coords[1]
         if i !=3:
@@ -136,6 +101,7 @@ def all_six_AIA(aialist,unmask=True):
         if i !=0:
             yax.set_axislabel('')
             ax.set_yticklabels([])
+    return fig
             
 
 def dem_image(df,T):

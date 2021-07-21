@@ -23,7 +23,11 @@ def download_xrt_from_HEC(textfile,target_dir=False):
     ''' this should absolutely not be necessary so why is it?
     textfile is list from HEC catalog query order creation
     https://www.lmsal.com/cgi-ssw/www_sot_cat.sh
+    https://www.lmsal.com/hek/hcr?cmd=search-events
+    https://www.lmsal.com/hek/hcr?cmd=view-event&event-id=ivo%3A%2F%2Fsot.lmsal.com%2FVOEvent%23VOEvent_ObsX2020-09-12T11%3A13%3A24.000.xml
+    https://www.lmsal.com/hek/hcr?cmd=view-event&event-id=ivo%3A%2F%2Fsot.lmsal.com%2FVOEvent%23VOEvent_ObsX2020-09-12T18%3A00%3A24.000.xml
     
+    click on observation, then 'get all data', then refine search
     ... why do they have no download all button?
     '''
     with open(textfile) as f:

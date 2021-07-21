@@ -295,7 +295,7 @@ def skimage_contour(map,level=90):
     largest_contour = sorted(contours, key=lambda x: len(x))[-1]
     return largest_contour #can do same polygon operations on this now
 
-def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False,method='skimage'):
+def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False,method='skimage',transpose=True):
     cs,hpj_cs=[],[]
     ll=np.max(m.data)*np.array(levels)
     
@@ -311,21 +311,28 @@ def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False,
         #largest_contour=contour.allsegs[-1][0]
     c =  center_of_mass(largest_contour)
     cs.append(c)
-    hpj=m.pixel_to_world(c[0]*u.pixel,c[1]*u.pixel,origin=0)
+    hpj=m.pixel_to_world(c[1]*u.pixel,c[0]*u.pixel,origin=0) #does it have to be 0 first then 1 if using matplotlib?
     hpj_cs.append(hpj)
     if show:
         fig,ax=plt.subplots()
         ax.imshow(m.data,alpha=.75,cmap=m.plot_settings['cmap'])
-        ax.plot(c[0],c[1], marker="o", markersize=12, color="red")
+        ax.plot(c[1],c[0], marker="o", markersize=12, color="red")
         ax.plot(largest_contour[:,1],largest_contour[:,0])
         fig.show()
     if return_as_mask:
         from skimage.draw import polygon
         rr,cc=polygon(largest_contour[:,0],largest_contour[:,1])
         #rr,cc=polygon(contour.allsegs[0][0][:,0],contour.allsegs[0][0][:,1])
-        mask=np.zeros(m.data.T.shape)
-        mask[rr,cc]=1
-        return ~mask.T.astype(bool)
+        if not transpose:
+            print("not transposed")
+            mask=np.zeros(m.data.shape) #remove .T
+            mask[rr,cc]=1
+            mout=~mask.astype(bool)
+        else: #for legacy sake, keep transpose=True as the default... check if necessary in all cases!
+            mask=np.zeros(m.data.T.shape)
+            mask[rr,cc]=1
+            mout=~mask.T.astype(bool)
+        return mout
     else:
         return cs,hpj_cs,largest_contour
         
@@ -409,7 +416,7 @@ def get_average_px_size_arcsec(smap):
     tr=smap.top_right_coord
     height=tr.Ty-bl.Ty #arcsec
     width=tr.Tx-bl.Tx #arcsec
-    ny,nx=smaps[0].data.shape #x-axis is last
+    ny,nx=smap.data.shape #x-axis is last
     return(np.mean([height.value/ny,width.value/nx]))
     
 def arcsec_to_cm(arcsec,earthsun=False):

@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from run_iian_dem import gen_tresp_matrix
+from dem_utils import read_tresp_matrix
 from scipy import constants
 #import astropy.units as u
 #from astropy.coordinates import SkyCoord
@@ -104,7 +104,7 @@ def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp
     C. J. 2014, Sol. Phys., 289, 2377'''
     wavs=[94,131,171,193,211,335]
     if type(trmatrix) != np.array or type(tresp_logt) != np.array:
-        _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
+        _,_,trmatrix,tresp_logt=read_tresp_matrix(plot=False)
     widx=wavs.index(wavelength)
     R=trmatrix[:,widx]
     if not log:
@@ -131,7 +131,7 @@ def all_expected_AIA_fluxes(EM,T,size=None,log=False, trmatrix=False,tresp_logt=
 
 def plot_AIA_expected_fluxes(EM, T,size_range=[1e3,1e5], show=True, log=False, plotter='matplotlib',sunits='cm2'):
     wavs=[94,131,171,193,211,335]
-    _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
+    _,_,trmatrix,tresp_logt=read_tresp_matrix(plot=False)
     sizevec=np.linspace(size_range[0],size_range[1],100)
     
     loci_curves=[all_expected_AIA_fluxes(EM,T,size=s,trmatrix=trmatrix,tresp_logt=tresp_logt,log=log) for s in sizevec]
@@ -179,13 +179,13 @@ def EM_loci_curves(flux_obs,trmatrix=False):
     '''counterpart to expected_AIA_flux: EM(t) = flux_obs/(tresp/px)
     flux_obs is array of size (6,), tresp has size (6, len(temps)), output has shape(6,len(temps)'''
     if type(trmatrix) !=np.array:
-        _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
+        _,_,trmatrix,tresp_logt=read_tresp_matrix(plot=False)
     pixsize_cm2=(arcsec_to_cm(0.6*u.arcsec).value)**2 #assume pixel size is .6"
     return (flux_obs/(trmatrix/pixsize_cm2)).T #array
     
 def plot_EM_loci_curves(flux_obs,trmatrix=False,plotter='matplotlib'):
     if type(trmatrix) !=np.array:
-        _,_,trmatrix,tresp_logt=gen_tresp_matrix(plot=False)
+        _,_,trmatrix,tresp_logt=read_tresp_matrix(plot=False)
     EM_loci=EM_loci_curves(flux_obs,trmatrix=trmatrix)
     clrs=['darkgreen','darkcyan','gold','sienna','indianred','darkslateblue']
     wavs=[94,131,171,193,211,335]
@@ -218,6 +218,40 @@ def plot_EM_loci_curves(flux_obs,trmatrix=False,plotter='matplotlib'):
         #fig.show()
         
     return fig
+    
+def dE_from_DEM(dem, logt, V):
+    '''calclulate dE=3n dT/V where n is calculated from dem
+    Units:
+    E: J
+    n: kg m^-3
+    T: K
+    V: m^3
+    '''
+    
+    dE=[]
+    for ldem,T in zip(logt):
+        density=dem_to_density(ldem,T)
+        dE.append(thermal_energy_content(density,V,10**T))
+    return dE
+    
+def dem_to_density(dem,logt,px_size_cm2):
+    '''convert DEM at a given T from units cm−5 K−1 to m^-3 '''
+    return (dem*(10**T)*px_size_cm2)*1e-6
+    
+def img_area_to_volume(area, aia=True, sphere=True, loop=False, arcsec=True):
+    '''convert image area (in arcsec or cm^2) to volume '''
+    area_conv=area
+    if arcsec: #convert area to m^2
+        if aia: #use AIA pixel size
+            area_conv=area*arcsec_to_cm()
+        else: #use input value
+            area_conv=aia*area
+    radius=np.sqrt(area_conv/np.pi)
+    if sphere: #treat as sphere
+        return (4/3)*np.pi*radius**3
+    if loop: #loop is loop length in compatible units (m)
+        return loop*area_conv
+        
 
 def thermal_energy_content(n,V,T):
     '''E = 3NkT, N= n/V (units? SI => T in Kelvin, V in m^3, n in kg m^-3) '''
