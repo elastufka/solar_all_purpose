@@ -156,3 +156,15 @@ def generate_errors(nx,ny,nf,data):
             esys=serr_per*data[j]/100.
             edata[j]=np.sqrt(etemp**2. + esys**2.)
     return edata
+
+def percent_zeros(dem):
+    '''quickly calculate % of zeros'''
+    return ((np.product(np.shape(dem)) - np.count_nonzero(dem))/np.product(np.shape(dem)))*100.
+
+def fraction_nonzeros(dem):
+    '''quickly calculate fraction of nonzeros'''
+    return np.count_nonzero(dem)/np.product(np.shape(dem))
+
+def count_nans(dem):
+    '''quickly calculate # of NaNs'''
+    return np.count_nonzero(np.isnan(dem))

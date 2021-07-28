@@ -134,6 +134,12 @@ class DEM_solve:
             datavec=[np.array(dv)/np.array(d) for dv,d in zip(datavec,durs)]
                    
         self.dn_in=np.array(datavec)
+        try:
+            self.nx=np.array(datavec[0]).shape[0]
+            self.ny=np.array(datavec[0]).shape[1]
+        except IndexError:
+            self.nx=1
+            self.ny=1
         
         if self.verbose:
             print(self.dn_in)
@@ -143,9 +149,16 @@ class DEM_solve:
             fig.show()
 
         
-    def generate_demred_input(self,xray_err=0.2):
+    def generate_demreg_input(self,xray_err=0.2):
         '''return data used for demreg - non-map-based operations on the data done here, including temperature response matrix modification if necessary '''
-        self.edn_in=generate_errors(0,0,6,self.dn_in) #how does this work in 2D?
+        try:
+            nf,nx,ny=self.dn_in.shape #dn_in is nf,nx,ny. need to reshape to nx,ny,nf
+            self.dn_in=self.dn_in.reshape(nx,ny,nf) #hope this works right
+        except ValueError:
+            nf=6
+            nx,ny=0,0 #does 1,1 work too?
+        
+        self.edn_in=generate_errors(nx,ny,6,self.dn_in) #input dimensions have to be nx,ny,nf
         trmatrix_use=[]
         if np.product(self.trmatrix_logt == self.temps) == 0:
             vinterp=interp_tresp(self.full_trmatrix.T,self.trmatrix_logt,np.log10(self.temps))
@@ -162,7 +175,7 @@ class DEM_solve:
     def run_dem(self):
         '''wrapper for all the run_method functions basically'''
         if self.method == 'demreg':
-            self.generate_dem_input()
+            self.generate_demreg_input()
             try:
                 self.run_demreg()
             except AttributeError: #no errors were generated so do that
@@ -182,17 +195,21 @@ class DEM_solve:
             gloci=0
         else:
             gloci=1 #weight by loci min
-        self.dem,self.edem,self.elogt,self.chisq,self.dn_reg=dn2dem_pos(self.dn_in,self.edn_in,self.full_trmatrix,tresp_logt,self.temps,gloci=gloci)
+        self.dem,self.edem,self.elogt,self.chisq,self.dn_reg=dn2dem_pos(self.dn_in,self.edn_in,self.full_trmatrix,tresp_logt,self.temps,gloci=gloci) #does this need to be different when using a map?
         
         ratio=(self.dn_reg/self.dn_in)
-        self.aia_ratio=np.mean(ratio)
+        self.aia_ratio=np.nanmean(ratio)
             
         if self.verbose:
-            print("Input data and errors:")
-            for c,i,e in zip(self.aia_channels,self.dn_in,self.edn_in):
-                print(c,':    ',"{0:.2f}".format(i),"  {0:.2f}".format(e),"  {0:.0f}".format(100*e/i),'%')
+            if self.dn_in.shape == (6,):
+                print("Input data and errors:")
+                for c,i,e in zip(self.aia_channels,self.dn_in,self.edn_in):
+                    print(c,':    ',"{0:.2f}".format(i),"  {0:.2f}".format(e),"  {0:.0f}".format(100*e/i),'%') #don't do this for 2d
+                chisq=self.chisq
+            else:
+                chisq=np.mean(self.chisq)
             #print("DN input: %s" % self.dn_use)
-            print("chisq: %2f" % self.chisq)
+            print("chisq: %2f" % chisq)
             print("DN_reg/DN_in ratio: %s" % self.aia_ratio)
     
         if dataframe:
@@ -236,7 +253,7 @@ class DEM_solve:
         
         #outputs are ,emcube,status, image, coeff,lgtaxis
         result=idl.result
-        emcube=np.flip(results['emcube']*1e26,axis=0) #needs to be 2d array, else just use reverse of list
+        emcube=np.flip(result['emcube']*1e26,axis=0) #needs to be 2d array, else just use reverse of list
         tpassed=dt.now()-start_time
         print('Sparse DEM inversion done in %s' % tpassed)
         #get out the result
@@ -295,7 +312,7 @@ class DEM_solve:
                 dict_in[key_in]=[[dict_in[key_in]]]
             except KeyError:
                 pass
-        flatkeys=['dem','edem','mlogt','elogt','dn_reg','dn_in','edn_in','trmatrix_use','full_trmatrix','status','coeff']
+        flatkeys=['dem','edem','mlogt','elogt','dn_reg','dn_in','edn_in','trmatrix_use','full_trmatrix','status','coeff','chisq']
         for k in flatkeys:
             flatten_array(sd,k)
         delkeys=['trmatrix_logt','numtemps','verbose','min_err','self','temps','dtemps','aiamaps','aia_channels','og_trmatrix','aia_calc_degs','aia_exptime_correct']
@@ -349,54 +366,72 @@ class DEM_solve:
         #self.datav.to_json(self.datadir+'datavecs_'+outfilename)
         #should save the trmatrix too, once they're different...
     
-    def plot_dem_errorbar(self,yaxis_range=[19,26],oplot_loci=True,abs=False,perKEV=True,log=True):
-        title='Joint DEM,%s - %s' % tuple(self.timerange) # make this make sense based on input params
+    def plot_dem_errorbar(self,yaxis_range=[20,30],oplot_loci=True,abs=False,perKEV=False,log=True):
+        datestr=self.get_timedepend_date()
+        title='%s DEM inversion,%s' % (self.method,datestr)# make this make sense based on input params
+        yaxis_title=self.dem_units
         fig = go.Figure()
         if abs:
             pval=np.abs(self.dem)
         else:
             pval=self.dem
             
-        if not perKEV: #multiply by size of bin in K
+        #deal with 2D
+        if self.nx !=1 or self.ny!=1:
+            pval=np.nanmean(np.nanmean(pval,axis=1),axis=1) #1 or 0?
+            try:
+                eval=np.nanmean(np.nanmean(self.edem,axis=1),axis=1)
+            except KeyError:
+                pass
+            
+        if self.method == 'demreg' and not perKEV: #multiply by size of bin in K
             yaxis_title='DEM cm<sup>-5</sup>'
             #have to do the same with the error
-            pval=self.dem*self.dtemps
-            yerr=self.edem*self.dtemps
+            pval=pval*self.dtemps
+            yerr=eval*self.dtemps
+            xerr=self.elogt
             #and loci curves?...
         else:
-            yaxis_title='DEM cm<sup>-5</sup> K<sup>-1</sup>'
-            yerr=self.edem
-        xerr=self.elogt
+            yerr=np.zeros(len(pval))
+            xerr=np.zeros(len(pval))
         fig.add_trace(go.Scatter(x=self.mlogt,y=pval,error_x=dict(type='data',array=xerr),error_y=dict(type='data',array=yerr),name='DEM'))
         if oplot_loci:
-            vecs=self.dn_use/self.trmatrix_use
-            #if not perKEV:
-            #    vecs*=self.dtemps
+            vecs=self.dn_in/self.full_trmatrix
+            if self.method == 'demreg' and not perKEV:
+                vecs*=self.dtemps
             #yaxis_range=[19,26]
             for i in range(vecs.shape[1]):
-                fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.chanax[i]))
+                fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.aia_channels[i]))
         fig.update_layout(yaxis_range=[10**yaxis_range[0],10**yaxis_range[1]],title=title,yaxis_title=yaxis_title,xaxis_title='log<sub>10</sub> T (K)')
         if log:
             fig.update_layout(yaxis_type='log',yaxis_range=yaxis_range)
         return fig
         
     def plot_loci(self,yaxis_range=[23,29]):
-        title='EM loci curves,%s - %s' % tuple(self.timerange) # make this make sense based on input params
+        datestr=self.get_timedepend_date()
+        title='EM loci curves,%s' % datestr # make this make sense based on input params
         fig = go.Figure()
         vecs=self.dn_in/self.full_trmatrix
         #yaxis_range=[19,26]
         for i in range(vecs.shape[1]):
-            fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.chanax[i]))
+            fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.aia_channels[i]))
         fig.update_layout(yaxis_type='log',yaxis_range=yaxis_range,title=title,yaxis_title='EM cm<sup>-5</sup> K<sup>-1</sup>',xaxis_title='log<sub>10</sub> T (K)')
         return fig
 
     def DN_in_v_reg(self):
-        title='DN_reg vs DN_in, %s - %s' % tuple(self.timerange)
-        lb=int(np.min(np.log10(self.dn_in)))-1
-        ub=int(np.max(np.log10(self.dn_in)))+1
+        datestr=self.get_timedepend_date()
+        title='DN_reg vs DN_in, %s' % datestr
+        if self.nx !=1 or self.ny !=1:
+            dn_in=np.nanmean(np.nanmean(self.dn_in,axis=1),axis=1)
+            dn_reg=np.nanmean(np.nanmean(self.dn_reg,axis=1),axis=1)
+        else:
+            dn_in=self.dn_in
+            dn_reg=self.dn_reg
+        lb=int(np.min(np.log10(dn_in)))-1
+        ub=int(np.max(np.log10(dn_in)))+1
         fig=go.Figure()
-        for i in range(len(self.chanax)):
-            fig.add_trace(go.Scatter(x=[self.dn_in[i]],y=[self.dn_reg[i]],hovertext="ratio: %s" % np.round(self.dn_reg[i]/self.dn_in[i],3),mode='markers',marker_symbol='cross',marker_size=10,name=self.chanax[i]))
+        for i in range(6):
+            fig.add_trace(go.Scatter(x=[dn_in[i]],y=[dn_reg[i]],hovertext="ratio: %s" % np.round(dn_reg[i]/dn_in[i],3),mode='markers',marker_symbol='cross',marker_size=10,name=self.aia_channels[i]))
         fig.add_trace(go.Scatter(x=np.logspace(lb,ub,100),y=np.logspace(lb,ub,100),name='1:1'))
         fig.update_layout(xaxis_type='log',yaxis_type='log',xaxis_title='DN_in',yaxis_title='DN_reg',title=title)
         fig.update_layout(yaxis = dict(showexponent = 'all',exponentformat = 'e'),xaxis = dict(showexponent = 'all',exponentformat = 'e'))
@@ -404,10 +439,10 @@ class DEM_solve:
         
     def plot_trmatrix(self,yaxis_range=[-26,-19]):
         fig=go.Figure()
-        vecs=self.trmatrix_use
+        vecs=self.full_trmatrix
         #yaxis_range=[19,26]
         for i in range(vecs.shape[1]):
-            fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.chanax[i]))
+            fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.aia_channels[i]))
         fig.update_layout(yaxis_type='log',yaxis_range=yaxis_range,title='Temperature Response Matrix used for DEM calculation',yaxis_title='Temperature Response DN s<sup>-1</sup> px<sup>-1</sup> cm<sup>5</sup> K<sup>-1</sup>',xaxis_title='log<sub>10</sub> T (K)')
         return fig
                         
