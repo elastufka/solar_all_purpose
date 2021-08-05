@@ -445,23 +445,53 @@ class DEM_solve:
             fig.add_trace(go.Scatter(x=self.mlogt,y=vecs[:,i],name=self.aia_channels[i]))
         fig.update_layout(yaxis_type='log',yaxis_range=yaxis_range,title='Temperature Response Matrix used for DEM calculation',yaxis_title='Temperature Response DN s<sup>-1</sup> px<sup>-1</sup> cm<sup>5</sup> K<sup>-1</sup>',xaxis_title='log<sub>10</sub> T (K)')
         return fig
-                        
-    def area_to_volume(self,thirdD,instr='AIA'):
-        '''use area of emission to calculate a volume, given a 3rd dimension input'''
-        area_cm2=self[instr+'_area']
-        return volume
 
-    def thermal_energy_content(self,logt,thirdD,volume_instr='AIA'):
-        '''E = 3NkT, n= N/V (units? SI => T in Kelvin, V in m^3, n in kg m^-3) '''
-        T=10**logt
-        V=self.area_to_volume(thirdD,instr=volume_instr)
-        #get n from the DEM: units are cm^-5 K^-1
-        dem_scaled=self.dem*self.dtemps
-        #select the correct T bin
+    def area_to_volume(self,thirdD):
+        '''use area of emission to calculate a volume, given a 3rd dimension input (defaults to square root of area, so assuming a cube)'''
+        area_cm2=self.aia_area #this accounts fro the number of pixels
+        px2=arcsec_to_cm(self.aiamaps[0].meta['cdelt2']*u.arcsec)**2
+        if not thirdD:
+            thirdD=np.sqrt(area_cm2)
+        #check that thirdD and area are in same units; if not, convert
+        a_units=np.sqrt(1.*area_cm2.unit).unit
+        if thirdD.unit != a_units:
+            thirdD=thirdD.to(a_units)
+        volume=thirdD*area_cm2
+        return volume, px2
+
+    def thermal_energy_content(self,thirdD=False,fill_factor=1.0, plot=False,unit=u.Joule):
+        '''E = 3NkT, n= N/V
+        E= 3kT sqrt(EM*V*f) #St.Hilaire & Benz 2005 eq 17, EM has units cm^-3
+        assume filling factor f=1
+        units:
+          kT: J/K * K = J  [mass][length]^2[time]^-2
+          EM*V*px2: cm^-5 * cm^3 *cm^2 = unitless
+        returns E in Joules
+        '''
+        #T=10**logt
+        #tlist=list(self.temps)
+        #tidx= tlist.index(min(tlist, key=lambda x: abs(x - T)))
+        V,px2=self.area_to_volume(thirdD=thirdD) #V in cm^3, px^2 in cm^2
+        dem_scaled=self.dem*self.dtemps*((1*u.cm)**-5)#units cm^-5 #need to do temperature cutoff?
+        n_eff=dem_scaled * V * px2 * fill_factor# sqrt([cm^-5 * cm^3 * cm^2]) unitless
+        E_joules= 3*constants.k*(u.Joule/u.K) * np.array(self.temps[1:])*u.K * np.sqrt(n_eff)
+        #print(V.unit,px2.unit,dem_scaled.unit,n_eff.unit,E_joules.unit)
+        if unit != u.Joule:
+            E_out=E_joules.to(unit)
+        else:
+            E_out=E_joules
         
-        #multiply by... area of a single pixel? to get rid of the cm^-2?
-        
-        #now it's a proper density but it's not necessarily a particle density... hmmm...
-        
-        return 3*constants.k*n*V*T
+        if plot:
+            title="Thermal energy calculated for a " + "{0:.2f}".format((cm_to_arcsec(V**(1/3)))**3) + " volume" #use {0:.2e} for exponential format
+            colorscale = plotly.colors.sequential.Plasma
+            cdict=[[i/(len(colorscale)-1),c] for i,c in enumerate(colorscale)]
+            colors=[get_continuous_color(cdict,en.value/np.max(E_out).value) for en in E_out]
+            timetext=[dict(xref='paper',yref='paper',x=0.5, y=1.05,showarrow=False,text =self.get_timedepend_date())]
+            fig=go.Figure()
+            fig.add_trace(go.Bar(x=self.temps,y=E_out,width=.9*np.array(self.dtemps), marker_color=colors))
+            fig.update_layout(xaxis_title='Temperature (K)',yaxis = dict(title='Thermal Energy (%s)' % E_out.unit,showexponent = 'all',exponentformat = 'e'),title=title,annotations=timetext)
+            return E_out,fig
+        else:
+            return E_out #should be a vector
+
         
