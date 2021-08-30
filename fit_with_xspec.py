@@ -16,6 +16,7 @@ import glob
 from datetime import datetime as dt
 #import pickle
 import plotly.graph_objects as go
+import textwrap
 #from nustar_utils import plot_nustar_specfit
 
 class fit_with_xspec:
@@ -142,7 +143,7 @@ class fit_with_xspec:
         #delete fit file if already exists
         if os.path.isfile(self.datadir+'/'+self.fitfile):
             os.remove(self.datadir+'/'+self.fitfile)
-        xspec.Plot.addCommand(f'wd {self.fitfile}')
+        xspec.Plot.addCommand(f'wd {self.datadir}/{self.fitfile}')
         xspec.Plot.iplot('ldata', 'ufspec', 'delchi')
         
     def read_fit_results(self):
@@ -182,7 +183,7 @@ class fit_with_xspec:
         emfit=np.format_float_scientific(self.EM,precision=2)
         emlerr=np.format_float_scientific(self.EM_lbound,precision=2)
         emuerr=np.format_float_scientific(self.EM_ubound,precision=2)
-        title=f"{tempfit} ({tlerr}-{tuerr}) MK, {emfit} ({emlerr}-{emuerr}) cm<sup>-3</sup>"
+        title='<br>'.join([f"{tempfit} ({tlerr}-{tuerr}) MK", f"{emfit} ({emlerr}-{emuerr}) cm<sup>-3</sup>"])
         
         dfp=df_ld.replace(0.0,np.nan) #don't plot zeros
         fig = make_subplots(rows=2, cols=1, start_cell="top-left",shared_xaxes=True,row_heights=[.6,.3],vertical_spacing=.05)
