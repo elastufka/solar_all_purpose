@@ -43,7 +43,9 @@ def query_fido(time_int, instrument, wave, series='aia_lev1_euv_12s', cutout_coo
         if type(cutout_coords[0]) == SkyCoord and type(cutout_coords[1]) == SkyCoord:
             bottom_left_coord,top_right_coord=cutout_coords
         else: #convert to skycoord, assume earth-observer at start time. If non-earth observer used, must pass cutout_coords as skycoords in desired frame
-            print('foo')
+            bottom_left_coord=SkyCoord(cutout_coords[0][0]*u.arcsec, cutout_coords[0][1]*u.arcsec,obstime=t0,frame=sunpy.coordinates.frames.Helioprojective)
+            top_right_coord=SkyCoord(cutout_coords[1][0]*u.arcsec, cutout_coords[1][0]*u.arcsec, obstime=t0,frame=sunpy.coordinates.frames.Helioprojective)
+
             
         cutout = sn.attrs.jsoc.Cutout(bottom_left_coord,top_right=top_right_coord,tracking=track_region)
         
