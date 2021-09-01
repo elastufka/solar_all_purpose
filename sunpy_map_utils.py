@@ -8,7 +8,7 @@ from astropy.wcs import WCS
 import sunpy.map
 import sunpy.coordinates
 import sunpy.coordinates.wcs_utils
-from sunpy.net import vso
+import sunpy.net as sn
 import numpy as np
 import numpy.ma as ma
 import matplotlib.dates as mdates
@@ -25,6 +25,45 @@ from skimage.transform import downscale_local_mean
 from scipy.ndimage import sobel
 from skimage.measure import find_contours
 import pickle
+
+def query_fido(time_int, instrument, wave, series='aia_lev1_euv_12s', cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False):
+    '''query VSO database for data and download it. Cutout coords will be converted to SkyCoords if not already in those units. For cutout need sunpy 3.0+
+    Series are named here: http://jsoc.stanford.edu/JsocSeries_DataProducts_map.html but with . replaced with _'''
+    if type(time_int[0]) == str:
+        time_int[0]=dt.strptime(time_int[0],'%Y-%m-%dT%H:%M:%S')
+        time_int[1]=dt.strptime(time_int[1],'%Y-%m-%dT%H:%M:%S')
+        
+    wave=sn.attrs.Wavelength(wave*u.angstrom)#(wave-.1)* u.angstrom, (wave+.1)* u.angstrom)
+    #instr= sn.attrs.Instrument(instrument)
+    time = sn.attrs.Time(time_int[0],time_int[1])
+    series=getattr(sn.attrs.jsoc.Series,series) #is this only needed when using jsoc however?
+    qs=[time,wave, series]
+
+    if cutout_coords != False:
+        if type(cutout_coords[0]) == SkyCoord and type(cutout_coords[1]) == SkyCoord:
+            bottom_left_coord,top_right_coord=cutout_coords
+        else: #convert to skycoord, assume earth-observer at start time. If non-earth observer used, must pass cutout_coords as skycoords in desired frame
+            print('foo')
+            
+        cutout = sn.attrs.jsoc.Cutout(bottom_left_coord,top_right=top_right_coord,tracking=track_region)
+        
+        qs.append(cutout)
+        qs.append(sn.attrs.jsoc.Notify(jsoc_email))
+        #qs.append(vso.attrs.jsoc.Segment.image)
+        #qs.append(vso.atrs..jsoc.Series.aia_lev1_euv_12s) #this is essential now...
+        
+    if source:
+        source=sn.attrs.Source(source)
+        qs.append(source)
+    if sample: #Quantity
+        sample = sn.attrs.Sample(sample)
+        qs.append(sample)
+
+    res = sn.Fido.search(*qs)
+    #print(qs, path, res)
+    if not path: files = sn.Fido.fetch(res,path='./{file}').wait()
+    else: files = sn.Fido.fetch(res).wait()
+    return res #prints nicely in notebook at any rate
 
 def get_limbcoords(aia_map):
     r = aia_map.rsun_obs - 1 * u.arcsec  # remove one arcsec so it's on disk.
