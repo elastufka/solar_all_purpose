@@ -28,6 +28,10 @@ class fit_with_xspec:
         global emfact
         emfact=3.5557e-42
         
+        cwd=os.getcwd()
+        #print(cwd,self.fitfile)
+        os.chdir(datadir)
+        
         if logfilename: # logfilename=None means don't log
             logfile = xspec.Xset.openLog(logfilename)
         xspec.Plot.device = '/null'
@@ -56,6 +60,8 @@ class fit_with_xspec:
         if plot:
             df_ld,_,_=self.read_fit_results()
             self.plot_fit(df_ld,fitrange,prange)
+            
+        os.chdir(cwd)
     
     def load_data(self):
         if self.both== 'A':
@@ -141,9 +147,9 @@ class fit_with_xspec:
         #xspec.Plot.iplot('ldata', 'ufspec', 'rat') #do I need to do this up front?
         #pdata = 'test_model_out.txt'
         #delete fit file if already exists
-        if os.path.isfile(self.datadir+'/'+self.fitfile):
-            os.remove(self.datadir+'/'+self.fitfile)
-        xspec.Plot.addCommand(f'wd {self.datadir}/{self.fitfile}')
+        if os.path.isfile(self.fitfile):
+            os.remove(self.fitfile)
+        xspec.Plot.addCommand(f'wd {self.fitfile}') #{self.datadir}/ #has to be in current directory, so use OS to control path
         xspec.Plot.iplot('ldata', 'ufspec', 'delchi')
         
     def read_fit_results(self):

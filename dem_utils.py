@@ -168,3 +168,27 @@ def fraction_nonzeros(dem):
 def count_nans(dem):
     '''quickly calculate # of NaNs'''
     return np.count_nonzero(np.isnan(dem))
+    
+def tresp_matrix_from_IDL(datestr):
+    ''' ;  tresp=aia_get_response(/temperature,/dn,/eve,timedepend_date='01-Jul-2010')
+     ids=[0,1,2,3,4,6]
+     channels=tresp.channels[ids]
+     logt=tresp.logte
+     tr=tresp.all[*,ids]
+     units=tresp.units '''
+    import pidly
+    #datestr=self.get_timedepend_date()
+    ids=[0,1,2,3,4,6]
+    idl = pidly.IDL('/Users/wheatley/Documents/Solar/sswidl_py.sh')
+    idl('ts',datestr)
+    idl('ids',ids)
+    idl('tresp=aia_get_response(/temperature,/dn,/eve,timedepend_date=ts)')
+    idl('channels=tresp.channels[ids]') #do I need this?
+    idl('logt=tresp.logte')
+    idl('tr=tresp.all[*,ids]')
+    idl('units=tresp.units')
+    full_trmatrix=idl.tr
+    trmatrix_logt=idl.logt
+    tresp_units=idl.units
+    return full_trmatrix,trmatrix_logt,tresp_units
+

@@ -16,6 +16,7 @@ import pandas as pd
 
 from datetime import datetime as dt
 import glob
+import os
 import plotly.graph_objects as go
 import matplotlib
 from matplotlib import cm
@@ -60,23 +61,28 @@ def get_aia_response_py(obstime,traxis,channels=[94,131,171,193,211,335]):
         r = chan.wavelength_response(obstime=obstime, include_eve_correction=True)
     return trmatrix
 
-def aia_prep(files,zip_old=True):
+def aia_prep(files,outdir='.',zip_old=True,preppedfilenames=False):
     '''run AIA prep on given files, clean up'''
     idl = pidly.IDL('/Users/wheatley/Documents/Solar/sswidl_py.sh')
     idl('files',files)
-    idl('aia_prep,files,-1,/do_write_fits,/normalize,/use_ref') #what is input 2? input2 - List of indices of FITS files to read #indgen(size(files,/dim)) <- all files
+    idl('outdir',outdir)
+    idl('aia_prep,files,-1,/do_write_fits,/normalize,outdir=outdir')#,/use_ref') #what is input 2? input2 - List of indices of FITS files to read #indgen(size(files,/dim)) <- all files
     #rename files
-    prepped_files=glob.glob('AIA2*.fits')
-    for pf in prepped_files:
-        wave=pf[-8:-5]
-        newf=pf[:3]+'_'+wave+'_'+pf[3:-10]+'.fits'
-        #print newf
-        os.rename(pf,newf)
+    prepped_files=glob.glob(outdir+'/AIA2*.fits')
+    #pfnames=[]
+    #for pf in prepped_files:
+    #    wave=pf[-8:-5]
+    #    newf=pf[:3]+'_'+wave+'_'+pf[3:-10]+'.fits'
+    #    #print newf
+    #    os.rename(pf,newf)
+    #    pfnames.append(newf)
     if zip_old:
         #archive level 0 data
         zipf = zipfile.ZipFile('AIALevel0.zip', 'w', zipfile.ZIP_DEFLATED)
         zipdir(files, zipf)
         zipf.close()
+    if preppedfilenames:
+        return prepped_files
 
 def pickle_maps(bl,tr,outtag='maps'):
     for w in [94,131,171,193,211,335]:
