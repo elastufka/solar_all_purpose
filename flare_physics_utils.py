@@ -40,6 +40,26 @@ def argmin2D(input_array):
     y=input_array.min(axis=0).argmin()
     return [x,y]
     
+def goes_class_to_flux(class_in):
+    gdict={'A':-8,'B':-7,'C':-6,'M':-5,'X':-4}
+    if len(class_in) > 1:
+        goes_flux=float(class_in[1:])*10**gdict[class_in[0]]
+    else: #just the letter
+        goes_flux=10**gdict[class_in[0]]
+    return goes_flux
+
+def goes_flux_to_class(flux_in):
+    gdict={-8:'A',-7:'B',-6:'C',-5:'M',-4:'X'}
+    try:
+        letter=gdict[int(np.log10(flux_in))]
+    except KeyError:
+        if np.log10(flux_in) < -8:
+            letter='A'
+        elif np.log10(flux_in) > -4:
+            letter='X'
+    number=np.round(flux_in/(10**int(np.log10(flux_in))),2)
+    return letter+str(number)
+    
 def get_XRT_resp(tr_logt, date, filter='Be-Thin'):
     '''run tresp_be_thin43 in IDL. from ssw documentation:
     INPUTS:

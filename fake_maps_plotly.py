@@ -1,14 +1,18 @@
 import numpy as np
+import pandas as pd
 
 from astropy import units as u
 import plotly.graph_objects as go
 from astropy.coordinates import SkyCoord
+from skimage.transform import downscale_local_mean
 import sunpy.map
         
 class fake_map:
     def __init__(self,sunpy_map,tickspacing=100,binning=1,bottom_left=None,top_right=None,round=-2):
         '''plot SunPy maps in Plotly. Can input bottom_left and top_right as SkyCoords in map coordinate frame'''
         self.map=sunpy_map
+        self.wcs=sunpy_map.wcs.to_header().tostring()
+        self._get_observer()
         self.datashape=sunpy_map.data.shape #x- and y- reversed as per usual (thanks FITS)
         self.tickspacing=tickspacing
         self.binning=binning
@@ -16,10 +20,27 @@ class fake_map:
         self.top_right=top_right
         self.round=round
         self.bin_data()
+        self.get_axis_limits()
+        self.get_wcs_grid()
+        self.get_tickinfo()
+        
+    def _get_observer(self):
+        ''' get heliographic observer so that SkyCoord can be reconstructed properly'''
+        observer=self.map.coordinate_frame.observer
+        self.olon=observer.lon.value
+        self.olat=observer.lat.value
+        self.orad=observer.radius.value
+        self.olon_unit=observer.lon.unit.name
+        self.olat_unit=observer.lat.unit.name
+        self.orad_unit=observer.radius.unit.name
+        self.obstime=observer.obstime
+        self.obsframe='heliographic_stonyhurst' #is this universally true? I think it is for observer
         
     def bin_data(self):
         if self.binning != 1.:
             self.binned_data=downscale_local_mean(self.map.data, (self.binning,self.binning),clip=True)
+        else:
+            self.binned_data=self.map.data #just makes things easier
     
     def get_axis_limits(self):
         '''get wcs axes limits in pixels. Helps fake the transform'''
@@ -36,7 +57,7 @@ class fake_map:
             self.xlim=[bl.x.value/self.binning,tr.x.value/self.binning]
             self.ylim=[bl.y.value/self.binning,tr.y.value/self.binning] #would int division be better?
         except ValueError:
-            print(f"{self.bottom_left} or {self.top_right} is not a SkyCoord!")
+            print('')#f"{self.bottom_left} or {self.top_right} is not a SkyCoord!")
     
     def generate_coords(self,X,Y):
         '''where is this being slow? meshgrid? '''
@@ -69,11 +90,33 @@ class fake_map:
         self.ticktextx=[str(int(l)) for l in world_tickvalsx]
         self.ticktexty=[str(int(l)) for l in world_tickvalsy]
         
+    def _cleanup(self):
+        '''for use in display app... get rid of original data, use only binned, get rid of other stuff no longer needed '''
+        #get rid of None values in binned_image
+        
+        del self.map
+        del self.datashape
+        del self.tickspacing
+        del self.bottom_left
+        del self.top_right
+        del self.round
+        
+    def _flatten(self):
+        flattened_dict={}
+        for k,v in self.__dict__.items():
+            if type(v) == np.ndarray or type(v)==list:
+                flattened_dict[k]=[v]
+            else:
+                flattened_dict[k]=[v]
+        return flattened_dict
+        
+    def to_dataframe(self):
+        df=pd.DataFrame(self._flatten())
+        return df
+        
     def plot_fake_heatmap(self,zmin=None,zmax=None,log=False):
-        try:
-            plotdata=self.binned_data
-        except AttributeError:
-            plotdata=self.map.data
+
+        plotdata=self.binned_dataa
         
         if log: plotdata=np.log10(plotdata)
            
@@ -90,10 +133,8 @@ class fake_map:
         
     def plot_fake_image(self,zmin=None,zmax=None,log=False):
         '''to be completed - set as image in background of plotly scatter (see dem_inspect app for example) '''
-        try:
-            plotdata=self.binned_data
-        except AttributeError:
-            plotdata=self.map.data
+
+        plotdata=self.binned_data
         
         if log: plotdata=np.log10(plotdata)
            

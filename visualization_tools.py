@@ -14,6 +14,8 @@ import plotly.colors
 import plotly.io as pio
 import plotly.express as px
 
+from sunpy_map_utils import cm_to_arcsec
+import sunpy
 import seaborn as sns
 from pride_colors import *
         
@@ -122,3 +124,30 @@ def corr_plot(df):
             square=True, linewidths=.5, cbar_kws={"shrink": .5})
     return f
 
+def locations_on_disk(xloc,yloc,solrad=None, deg=False,msizes=None):
+    ''' Plot cartesian flare locations on solar disk using Plotly. '''
+    if not solrad: #use sunpy default
+        try: #sunpy < 3
+            rsun=sunpy.sun.constants.radius
+        except AttributeError:
+            rsun=695700000 * u.m
+        rsun_arcsec=cm_to_arcsec(rsun.to(u.cm)).value
+    else:
+        rsun_arcsec=solrad
+    axbounds=np.round(rsun_arcsec,-3)
+    if deg:
+        rsun_arcsec=90
+        axbounds=100
+        
+    fig=go.Figure()
+    fig.add_shape(type="circle",
+        xref="x", yref="y",
+        x0=-rsun_arcsec, y0=-rsun_arcsec, x1=rsun_arcsec, y1=rsun_arcsec,
+        line_color="LightSeaGreen",
+    )
+    fig.add_trace(go.Scatter(x=xloc,y=yloc,mode='markers',marker_size=msizes)) #can update traces later
+
+    fig.update_layout(height=650)
+    fig.update_xaxes(range=[-1*axbounds,axbounds],showgrid=False,zeroline=False)
+    fig.update_yaxes(range=[-1*axbounds,axbounds],scaleanchor='x',scaleratio=1,showgrid=False)
+    return fig

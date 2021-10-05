@@ -21,10 +21,12 @@ import matplotlib
 from matplotlib import cm
 import pidly
 from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
+from sunpy.map.maputils import solar_angular_radius
 from skimage.transform import downscale_local_mean
 from scipy.ndimage import sobel
 from skimage.measure import find_contours
 import pickle
+import cmath
 
 def query_fido(time_int, instrument, wave, series='aia_lev1_euv_12s', cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False):
     '''query VSO database for data and download it. Cutout coords will be converted to SkyCoords if not already in those units. For cutout need sunpy 3.0+
@@ -66,6 +68,30 @@ def query_fido(time_int, instrument, wave, series='aia_lev1_euv_12s', cutout_coo
     if not path: files = sn.Fido.fetch(res,path='./{file}').wait()
     else: files = sn.Fido.fetch(res).wait()
     return res #prints nicely in notebook at any rate
+    
+def query_hek(time_int,event_type='FL',obs_instrument='AIA',small_df=True,single_result=False):
+    time = sn.attrs.Time(time_int[0],time_int[1])
+    eventtype=sn.attrs.hek.EventType(event_type)
+    #obsinstrument=sn.attrs.hek.OBS.Instrument(obs_instrument)
+    res=sn.Fido.search(time,eventtype,sn.attrs.hek.OBS.Instrument==obs_instrument)
+    tbl=res['hek']
+    names = [name for name in tbl.colnames if len(tbl[name].shape) <= 1]
+    df=tbl[names].to_pandas()
+    if df.empty:
+        return df
+    if small_df:
+        df=df[['hpc_x','hpc_y','hpc_bbox','frm_identifier','frm_name']]
+    if single_result: #select one
+        aa=df.where(df.frm_identifier == 'Feature Finding Team').dropna()
+        print(aa.index.values)
+        if len(aa.index.values) == 1: #yay
+            return aa
+        elif len(aa.index.values) > 1:
+            return pd.DataFrame(aa.iloc[0]).T
+        elif aa.empty: #whoops, just take the first one then
+            return pd.DataFrame(df.iloc[0]).T
+    df.drop_duplicates(inplace=True)
+    return df
 
 def get_limbcoords(aia_map):
     r = aia_map.rsun_obs - 1 * u.arcsec  # remove one arcsec so it's on disk.
@@ -98,14 +124,14 @@ def mask_disk(submap,limbcoords=False,plot=False,fac=50.,filled=False,greater=Fa
     else:
         mask = ma.masked_greater_equal(r, 1)
 
-    palette = submap.plot_settings['cmap']
-    palette.set_bad('black')
     if filled:
         data_arr=np.ma.masked_array(submap.data,mask=mask.mask)
         filled_data=ma.filled(data_arr,0)
         scaled_map = sunpy.map.Map(filled_data, submap.meta)
     else:
         scaled_map = sunpy.map.Map(submap.data, submap.meta, mask=mask.mask)
+        palette = submap.plot_settings['cmap']
+        palette.set_bad('black')
     if plot:
         fig = plt.figure()
         ax=fig.add_subplot(projection=scaled_map)
@@ -492,3 +518,89 @@ def get_circle_bltr(circle):
     bl=SkyCoord(xmin*u.arcsec,ymin*u.arcsec,frame=circle.frame)
     tr=SkyCoord(xmax*u.arcsec,ymax*u.arcsec,frame=circle.frame)
     return bl,tr
+    
+def hpc_scale(hpc_coord,observer):
+    '''scale arcsconds to degrees where the limbs and poles are at +- 90'''
+    try:
+        rsun_arcsec=solar_angular_radius(observer) #note this should ONLY be done on the observer!
+    except ValueError:
+        rsun_arcsec=cm_to_arcsec(hpc_coord.rsun.to(u.cm))
+    rsun_deg=rsun_arcsec.to(u.deg)
+    hpc_lon=(hpc_coord.Tx/rsun_arcsec).value*90. #wrong! this is a square with sides at 90 degrees. need a circle
+    hpc_lat=(hpc_coord.Ty/rsun_arcsec).value*90.
+    return hpc_lon,hpc_lat,rsun_arcsec
+
+def hpc_to_hpr(hpc_coord,observer, disk_angle_90=True):
+    '''convert from Cartesian to polar coordinates on the solar disk
+    
+    From Thompson:
+    
+     From the above, one can derive the conversions between helioprojective-cartesian and helioprojective-radial:
+     􏰊􏰁􏰋
+     θρ =arg(cosθycosθx, sqrt(cos^2(θy) sin^2(θx) + sin^2(θy))) , 􏰈
+     
+     ψ = arg(sinθy,−cosθy sinθx) ,
+     
+     d = d,
+     
+     See Figure 3
+     
+     '''
+    try:
+        rsun_arcsec=solar_angular_radius(observer) #note this should ONLY be done on the observer!
+    except ValueError:
+        rsun_arcsec=cm_to_arcsec(coord.rsun.to(u.cm))
+    rsun_deg=rsun_arcsec.to(u.deg)
+    #print(rsun_arcsec)
+    thetax=hpc_coord.Tx.to(u.deg) #arcsec - convert to degrees for numpy
+    thetay=hpc_coord.Ty.to(u.deg)
+    
+    hpr_rho=cmath.phase(complex(np.cos(thetay)*np.cos(thetax), np.sqrt(np.cos(thetay)**2 * np.sin(thetax)**2 + np.sin(thetay)**2)))*u.deg
+    hpr_phi= cmath.phase(complex(np.sin(thetay), -1*np.cos(thetay)*np.sin(thetax)))*u.deg
+    
+    #hpc_lon=(hpc_coord.Tx/rsun_arcsec).value*90. #wrong! this is a square with sides at 90 degrees. need a circle
+    #hpc_lat=(hpc_coord.Ty/rsun_arcsec).value*90.
+    
+    if disk_angle_90: #angular size of half disk is 90 degrees
+        return (hpr_rho/rsun_deg)*90,(hpr_phi/rsun_deg)*90
+    else:
+        return hpr_rho,hpr_phi
+        
+def within_r_of_center(r,hpc_coord,rsun_arcsec=False):
+    '''is the input coordinate within a circle of radius r arcsec from the solar center  '''
+    if not rsun_arcsec:
+        rsun_arcsec=953.489*u.arcsec
+    if type(hpc_coord) == tuple or type(hpc_coord) == list: #not a skycoord, assume arcsec
+        rho=np.sqrt(hpc_coord[0]**2 + hpc_coord[1]**2)*u.arcsec
+    else:
+        rho=np.sqrt(hpc_coord.Tx**2 + hpc_coord.Ty**2)
+    if rho + r*u.arcsec <= rsun_arcsec:
+        return True
+    else:
+        return False
+
+def hpr_to_hpc(hpr_coord,observer):
+    '''convert from radial to Cartesiancoordinates on the solar disk
+    
+    θx =arg(cosθρ,−sinθρsinψ) ,
+    􏰈􏰉
+    θy = sin^−1(sinθρ cosψ)
+    
+    d = d.
+    
+    See Figure 2
+    
+    '''
+    #try:
+    #    rsun_arcsec=solar_angular_radius(observer) #note this should ONLY be done on the observer!
+    #except ValueError:
+    #    rsun_arcsec=cm_to_arcsec(coord.rsun.to(u.cm))
+    #rsun_deg=rsun_arcsec.to(u.deg)
+    #print(rsun_arcsec)
+    lon=hpr_coord.lon #arcsec - convert to rad
+    thetay=hpc_coord.Ty.to(u.rad)
+
+    hpc_lon=cmath.phase(complex(np.cos(thetay)*np.cos(thetax), np.sqrt(np.cos(thetay)**2 * np.sin(thetax)**2 + np.sin(thetay)**2)))*u.deg
+    hpc_lat= cmath.phase(complex(np.sin(thetay), -1*np.cos(thetay)*np.sin(thetax)))
+
+    return hpc_lon,hpc_lat,rsun_deg
