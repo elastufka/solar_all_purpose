@@ -1,14 +1,3 @@
- #######################################
-# stereo.py
-# Erica Lastufka 4/5/2017  
-
-#Description: Copy of SunPy tutorial
-#######################################
-
-#######################################
-# Usage:
-
-######################################
 
 import numpy as np
 import scipy.constants as sc
