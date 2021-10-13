@@ -171,7 +171,10 @@ class rotate_coord:
         outstr=self.wcs_out.to_header_string()
         self.__dict__['wcs_in']=instr
         self.__dict__['wcs_out']=outstr
-        return pd.DataFrame(self.__dict__,index=pd.Index(list(range(len(self.x_in)))))
+        if type(self.x_in) == float or type(self.x_in) == int:
+            return pd.DataFrame(self.__dict__,index=pd.Index([0]))
+        else:
+            return pd.DataFrame(self.__dict__,index=pd.Index(list(range(len(self.x_in)))))
         
 
         
