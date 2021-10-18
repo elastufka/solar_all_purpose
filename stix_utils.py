@@ -21,6 +21,20 @@ def spacecraft_to_earth_time(date_in,load_spice=False):
         load_SPICE(date_in,"/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk")
     _,lighttime=coordinates_SOLO(date_in,light_time=True)
     return date_in + td(seconds=lighttime)
+    
+def get_rsun_apparent(date_in,observer=False, spacecraft='SO',sc=True):
+    if observer == False:
+        obs = get_observer(date_in,obs=spacecraft,wcs=False,sc=sc)
+    else:
+        obs=observer
+    return solar_angular_radius(obs)
+    
+def rescale_SO_coords(df,key_x='Bproj_x',key_y='Bproj_y',rsun_apparent='rsun_SO'):
+    keyname=key_x[:key_x.find('_')]
+    lonlat=[hpc_scale_inputs(df[key_x][i],df[key_y][i],df[rsun_apparent][i]) for i in df.index]
+    df[keyname+'_lon']=np.array(lonlat)[:,0]
+    df[keyname+'_lat']=np.array(lonlat)[:,1]
+    return df
 
 def update_all_rotations(df,istart=False,istop=False,verbose=True):
     '''with AIA exact frame instead of earth observer
@@ -139,8 +153,14 @@ def rotate_pairs(df,key_x='CFL_LOC_X(arcsec)',key_y='CFL_LOC_Y (arcsec)',obs_in=
     for i,r in df.iterrows():
         d=r.Datetime
         if not pd.isnull(r[key_x]):
-            observer_in,wcs_in=get_observer(d,obs=obs_in) #eventually add try/except for loading SPICE kernel if needed
-            observer_out,wcs_out=get_observer(d,obs=obs_out)
+            if type(obs_in) == 'str':
+                observer_in,wcs_in=get_observer(d,obs=obs_in) #eventually add try/except for loading SPICE kernel if needed
+            else:
+                observer_in,wcs_in=obs_in
+            if type(obs_out)==str:
+                observer_out,wcs_out=get_observer(d,obs=obs_out)
+            else:
+                observer_out,wcs_out=obs_out
 
             pair_rot=rotate_coord(r[key_x],r[key_y],observer_in,wcs_in,obs_out=observer_out,wcs_out=wcs_out)
             pair_rot=try_rotation(pair_rot)
@@ -174,8 +194,9 @@ def get_all_rotations(df):
     for i,r in mdf.iterrows():
         d=r.Datetime
         #print(i,d)
-        earth_observer=get_Earth_observer(d)
-        earth_wcs=get_Earth_wcs(d)
+        #earth_observer=get_Earth_observer(d)
+        #earth_wcs=get_Earth_wcs(d)
+        aia_observer,aia_wcs=get_AIA_observer(d,wcs=True)
         so_observer=get_SO_observer(d)
         so_wcs=get_SO_wcs(d)
         #print(solar_angular_radius(so_observer))
@@ -185,7 +206,7 @@ def get_all_rotations(df):
             qdf['Datetime']=[d]
             qdf['hpc_x']=np.nan
             qdf['hpc_y']=np.nan
-        qdf=rotate_pairs(qdf,key_x='hpc_x',key_y='hpc_y',obs_in='AIA',obs_out='SO')#rotate_hek_coords(qdf,earth_observer,earth_wcs,so_observer,so_wcs)
+        qdf=rotate_pairs(qdf,key_x='hpc_x',key_y='hpc_y',obs_in=[aia_observer,aia_wcs],obs_out=[so_observer,so_wcs])#rotate_hek_coords(qdf,earth_observer,earth_wcs,so_observer,so_wcs)
 
         
         qdf['CFL_vis_from_Earth']=[is_visible_from_earth(d,(mdf['CFL_LOC_X(arcsec)'][i],mdf['CFL_LOC_Y (arcsec)'][i])) for i,row in qdf.iterrows()]
@@ -193,10 +214,10 @@ def get_all_rotations(df):
         qdf['AIA_vis_from_SO']=[is_visible_from_SO(d,(row['hpc_x'],row['hpc_y'])) for i,row in qdf.iterrows()]
 
         #rotate bproj and CFL locations as well
-        bproj_rot=rotate_coord(r.Bproj_x,r.Bproj_y,so_observer,so_wcs,obs_out=earth_observer,wcs_out=earth_wcs)
+        bproj_rot=rotate_coord(r.Bproj_x,r.Bproj_y,so_observer,so_wcs,obs_out=aia_observer,wcs_out=aia_wcs)
         bproj_rot=try_rotation(bproj_rot)
             
-        CFL_rot=rotate_coord(r['CFL_LOC_X(arcsec)'],r['CFL_LOC_Y (arcsec)'],so_observer,so_wcs,obs_out=earth_observer,wcs_out=earth_wcs)
+        CFL_rot=rotate_coord(r['CFL_LOC_X(arcsec)'],r['CFL_LOC_Y (arcsec)'],so_observer,so_wcs,obs_out=aia_observer,wcs_out=aia_wcs)
         CFL_rot=try_rotation(CFL_rot)
             
         qdf['Bproj_lon']=[bproj_rot.x_deg for i,_ in qdf.iterrows()]

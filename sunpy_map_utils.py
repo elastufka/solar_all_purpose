@@ -529,6 +529,14 @@ def hpc_scale(hpc_coord,observer):
     hpc_lon=(hpc_coord.Tx/rsun_arcsec).value*90. #wrong! this is a square with sides at 90 degrees. need a circle
     hpc_lat=(hpc_coord.Ty/rsun_arcsec).value*90.
     return hpc_lon,hpc_lat,rsun_arcsec
+    
+def hpc_scale_inputs(hpc_x,hpc_y,rsun_arcsec):
+    '''assuming correct units: everything in arcsec '''
+    if type(rsun_arcsec) != float: #assume it's got units
+        rsun_arcsec=rsun_arcsec.value
+    hpc_lon=(hpc_x/rsun_arcsec)*90. #wrong! this is a square with sides at 90 degrees. need a circle
+    hpc_lat=(hpc_y/rsun_arcsec)*90.
+    return hpc_lon,hpc_lat
 
 def hpc_to_hpr(hpc_coord,observer, disk_angle_90=True):
     '''convert from Cartesian to polar coordinates on the solar disk
