@@ -11,6 +11,7 @@ from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord
 import rotate_coord as rc
 from visible_from_earth import *
 from rotate_maps import load_SPICE, coordinates_SOLO
+import spiceypy
 #from rotate_maps_utils import rotate_hek_coords
 
 def spacecraft_to_earth_time(date_in,load_spice=False):
@@ -28,6 +29,105 @@ def get_rsun_apparent(date_in,observer=False, spacecraft='SO',sc=True):
     else:
         obs=observer
     return solar_angular_radius(obs)
+    
+def parse_sunspice_name_py(spacecraft):
+    '''python version of sswidl parse_sunspice_name.pro '''
+    if type(spacecraft) == str:
+        sc = spacecraft.upper()
+        n = len(sc)
+
+        #If the string is recognized as one of the STEREO spacecraft, then return the appropriate ID value.
+        if 'AHEAD' in sc and 'STEREO' in sc or sc == 'STA':
+            return '-234'
+        
+        if 'BEHIND' in sc and 'STEREO' in sc or sc == 'STB':
+            return '-235'
+
+        #If SOHO, then return -21.
+        if sc=='SOHO':
+            return '-21'
+
+        #If Solar Orbiter then return -144.
+        if 'SOLAR' in sc and 'ORBITER' in sc or sc == 'SOLO' or sc == 'ORBITER':
+            return '-144'
+
+        #If Solar Probe Plus then return -96.
+        if 'PARKER' in sc and 'SOLAR' in sc and 'PROBE' in sc:
+            return '-96'
+        if 'PROBE' in sc and 'PLUS' in sc:
+            return '-96'
+        if sc == 'PSP' or sc == 'SPP':
+            return '-96'
+
+        #If BepiColombo MPO then return -121.
+        if 'BEPICOLOMBO' in sc and 'MPO' in sc:
+            return '-121'
+        if 'BC' in sc and 'MPO' in sc:
+            return '-121'
+        #Otherwise, simply return the (trimmed and uppercase) original name.
+        return sc
+    else:
+        raise TypeError("Input spacecraft name must be string")
+    
+def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True, radians=False,tolerance=100):
+    '''Python version of (simpler) sswidl get_sunspice_roll.pro . Assumes spice kernel already furnished'''
+    units = float(180)/np.pi
+    if radians: units = 1
+  
+    #Determine which spacecraft was requested, and translate it into the proper input for SPICE.
+
+    inst = 0
+    sc_ahead  = '-234'
+    sc_behind = '-235'
+    sc_psp    = '-96'
+    sc = parse_sunspice_name_py(spacecraft)
+    if sc == sc_ahead or sc == sc_behind:
+        sc_stereo=True
+    if sc == '-144':
+        sc_frame = -144000
+
+    #Start by deriving the C-matrices.  Make sure that DATE is treated as a vector.
+
+    if system != 'RTN' and type(system) == str:
+        system=system.upper()
+      
+    et=spiceypy.spiceypy.str2et(datestr)
+    sclkdp=spiceypy.spiceypy.sce2c(int(sc), et) #Ephemeris time, seconds past J2000.
+    #print(sc,sclkdp, tolerance, system)
+    (cmat,clkout)=spiceypy.spiceypy.ckgp(sc_frame, sclkdp, tolerance, system)
+
+    twopi  = 2.*np.pi
+    halfpi = np.pi/2.
+  
+    #sci_frame = (system.upper()== 'SCI') and sc_stereo
+
+    #cspice_m2eul, cmat[*,*,i], 1, 2, 3, rroll, ppitch, yyaw
+    rroll,ppitch,yyaw=spiceypy.spiceypy.m2eul(cmat, 1, 2, 3)
+    ppitch = -ppitch
+    if (sc == sc_ahead) or (sc == sc_behind): rroll = rroll - halfpi
+    if sc == sc_behind: rroll = rroll + np.pi
+    if abs(rroll) > np.pi: rroll = rroll - sign(twopi, rroll)
+
+    #Correct any cases where the pitch is greater than +/- 90 degrees
+    if abs(ppitch) > halfpi:
+        ppitch = sign(np.pi,ppitch) - ppitch
+        yyaw = yyaw - sign(np.pi, yyaw)
+        rroll = rroll - sign(np.pi, rroll)
+      
+    #Apply the units.
+    roll  = units * rroll
+    pitch = units * ppitch
+    yaw  = units * yyaw
+
+    #Reformat the output arrays to match the input date/time array.
+
+    #if n > 1:
+    #    sz = size(date)
+    #    dim = [sz[1:sz[0]]]
+    #roll  = reform(roll,  dim, /overwrite)
+    #pitch = reform(pitch, dim, /overwrite)
+    #yaw   = reform(yaw,   dim, /overwrite)
+  return roll
     
 def rescale_SO_coords(df,key_x='Bproj_x',key_y='Bproj_y',rsun_apparent='rsun_SO'):
     keyname=key_x[:key_x.find('_')]
