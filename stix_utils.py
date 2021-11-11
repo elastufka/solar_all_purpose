@@ -11,7 +11,10 @@ from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord
 import rotate_coord as rc
 from visible_from_earth import *
 from rotate_maps import load_SPICE, coordinates_SOLO
+from sunpy.map.maputils import solar_angular_radius
 import spiceypy
+import warnings
+from spiceypy.utils.exceptions import NotFoundError
 #from rotate_maps_utils import rotate_hek_coords
 
 def spacecraft_to_earth_time(date_in,load_spice=False):
@@ -29,6 +32,57 @@ def get_rsun_apparent(date_in,observer=False, spacecraft='SO',sc=True):
     else:
         obs=observer
     return solar_angular_radius(obs)
+    
+def load_SOLO_SPICE(obs_date, path_kernel='/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk/'):
+    """
+    Load the SPICE kernel that will be used to get the
+    coordinates of the different spacecrafts.
+    """
+    #get cwd
+    cwd=os.getcwd()
+
+    # Convert string format to datetime
+    obs_date = dt.strptime(obs_date, '%Y-%m-%dT%H:%M:%S')
+
+    # Check if path_kernel has folder format
+    if path_kernel[-1] != '/':
+        path_kernel = path_kernel+'/'
+
+    # Find the MK generation date ...
+    MK_date_str = glob.glob(path_kernel+'/solo_*flown-mk_v*.tm')
+    # ... and convert it to datetime
+    MK_date = dt.strptime(MK_date_str[0][-15:-7], '%Y%m%d')
+
+    # Check which kernel has to be loaded: 'flown' or 'pred'
+    if obs_date < MK_date:
+        spice_kernel = 'solo_ANC_soc-flown-mk.tm'
+    else:
+        spice_kernel = 'solo_ANC_soc-pred-mk.tm'
+        print()
+        print('**********************************************')
+        print('The location of Solar Orbiter is a prediction!')
+        print('Did you download the most recent SPICE kernel?')
+        print('**********************************************')
+        print()
+
+
+    # For STEREO
+    #stereo_kernel = spicedata.get_kernel('stereo_a')
+    #hespice.furnish(stereo_kernel)
+
+    # Change the CWD to the given path. Necessary to load correctly all kernels
+    os.chdir(path_kernel)
+
+    # Load one (or more) SPICE kernel into the program
+    spiceypy.spiceypy.furnsh(spice_kernel)
+
+    print()
+    print('SPICE kernels loaded correctly')
+    print()
+
+    #change back to original working directory
+    os.chdir(cwd)
+
     
 def parse_sunspice_name_py(spacecraft):
     '''python version of sswidl parse_sunspice_name.pro '''
@@ -69,7 +123,7 @@ def parse_sunspice_name_py(spacecraft):
     else:
         raise TypeError("Input spacecraft name must be string")
     
-def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True, radians=False,tolerance=100):
+def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True, radians=False,tolerance=100,kernel_path='/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk'):
     '''Python version of (simpler) sswidl get_sunspice_roll.pro . Assumes spice kernel already furnished'''
     units = float(180)/np.pi
     if radians: units = 1
@@ -91,11 +145,21 @@ def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True
     if system != 'RTN' and type(system) == str:
         system=system.upper()
       
+    #don't know why it wants to live in the kernel directory in order to check errons but it does
+    pwd=os.getcwd()
+    os.chdir(kernel_path)
     et=spiceypy.spiceypy.str2et(datestr)
     sclkdp=spiceypy.spiceypy.sce2c(int(sc), et) #Ephemeris time, seconds past J2000.
     #print(sc,sclkdp, tolerance, system)
-    (cmat,clkout)=spiceypy.spiceypy.ckgp(sc_frame, sclkdp, tolerance, system)
+    try:
+        (cmat,clkout)=spiceypy.spiceypy.ckgp(sc_frame, sclkdp, tolerance, system)
+    except NotFoundError:
+        warnings.warn("Spice returns not found for function: ckgp, returning roll angle of 0")
+        os.chdir(pwd)
+        return 0.0
 
+    os.chdir(pwd)
+    
     twopi  = 2.*np.pi
     halfpi = np.pi/2.
   
@@ -127,7 +191,7 @@ def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True
     #roll  = reform(roll,  dim, /overwrite)
     #pitch = reform(pitch, dim, /overwrite)
     #yaw   = reform(yaw,   dim, /overwrite)
-  return roll
+    return roll
     
 def rescale_SO_coords(df,key_x='Bproj_x',key_y='Bproj_y',rsun_apparent='rsun_SO'):
     keyname=key_x[:key_x.find('_')]
