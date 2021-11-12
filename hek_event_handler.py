@@ -55,6 +55,7 @@ class HEKEventHandler():
             elif aa.empty: #whoops, just take the first one then
                 return pd.DataFrame(df.iloc[0]).T
 
+        df['movie_url']=[r.gs_imageurl[:r.gs_imageurl.rfind('/')+1] if type(r.gs_imageurl) == str else None for i,r in df.iterrows()]
         return df
         
     def rotate_hek_coords(self,df,binning=1):
