@@ -54,6 +54,15 @@ def plotly_logscale(xaxis=True,yaxis=True):
     '''set default log scale on indicated axis, with scientific notation'''
     plt.style.use('default')
     pio.templates.default = "plotly"#"ggplot2"#"plotly_dark"
+    
+def slideshow_stuff():
+    from IPython.display import Javascript
+    from plotly.offline import get_plotlyjs
+    Javascript(get_plotlyjs())
+    slidew=800
+    slideh=600
+    set_pride_template()
+    return slidew,slideh
 
 def plot_dem_2D(df,what='DEM'):
     ''' plot stuff in the DEM dataframe'''
