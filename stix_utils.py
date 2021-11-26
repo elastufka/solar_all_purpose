@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import os
+import glob
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -200,17 +202,19 @@ def rescale_SO_coords(df,key_x='Bproj_x',key_y='Bproj_y',rsun_apparent='rsun_SO'
     df[keyname+'_lat']=np.array(lonlat)[:,1]
     return df
 
-def update_all_rotations(df,istart=False,istop=False,verbose=True):
+def update_all_rotations(df,istart=False,istop=False,verbose=True, AIA=True, Bproj=True,CFL=True):
     '''with AIA exact frame instead of earth observer
     this changes basically nothing.... '''
     start_time=dt.now()
     #load spice kernels
     #print(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'))
     load_SPICE(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'), "/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk")
-    
-    hpc_x_rotated,hpc_y_rotated,hpc_lon_rotated,hpc_lat_rotated=[],[],[],[]
-    Bproj_x_rotated,Bproj_y_rotated,Bproj_lon_rotated,Bproj_lat_rotated=[],[],[],[]
-    CFL_x_rotated,CFL_y_rotated,CFL_lon_rotated,CFL_lat_rotated=[],[],[],[]
+    if AIA:
+        hpc_x_rotated,hpc_y_rotated,hpc_lon_rotated,hpc_lat_rotated=[],[],[],[]
+    if Bproj:
+        Bproj_x_rotated,Bproj_y_rotated,Bproj_lon_rotated,Bproj_lat_rotated=[],[],[],[]
+    if CFL:
+        CFL_x_rotated,CFL_y_rotated,CFL_lon_rotated,CFL_lat_rotated=[],[],[],[]
     for i, row in df.iterrows():
         if type(istart) == int and i < istart:
             continue
@@ -221,24 +225,24 @@ def update_all_rotations(df,istart=False,istop=False,verbose=True):
         so_wcs=get_SO_wcs(d)
         
         #re-rotate hpc to AIA pov. In fact, re-rotate everything...
-        aiac=try_rotation(rc.rotate_coord(row.hpc_x,row.hpc_y,Eobs,ewcs,obs_out=Sobs,wcs_out=so_wcs))
-        bprojc=try_rotation(rc.rotate_coord(row.Bproj_x,row.Bproj_y,Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
-        cflc=try_rotation(rc.rotate_coord(row['CFL_LOC_X(arcsec)'],row['CFL_LOC_Y (arcsec)'],Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
-        
-        hpc_x_rotated.append(aiac.rotated_x_arcsec)
-        hpc_y_rotated.append(aiac.rotated_y_arcsec)
-        hpc_lon_rotated.append(aiac.rotated_lon_deg)
-        hpc_lat_rotated.append(aiac.rotated_lat_deg)
-        
-        Bproj_x_rotated.append(bprojc.rotated_x_arcsec)
-        Bproj_y_rotated.append(bprojc.rotated_y_arcsec)
-        Bproj_lon_rotated.append(bprojc.rotated_lon_deg)
-        Bproj_lat_rotated.append(bprojc.rotated_lat_deg)
-        
-        CFL_x_rotated.append(cflc.rotated_x_arcsec)
-        CFL_y_rotated.append(cflc.rotated_y_arcsec)
-        CFL_lon_rotated.append(cflc.rotated_lon_deg)
-        CFL_lat_rotated.append(cflc.rotated_lat_deg)
+        if AIA:
+            aiac=try_rotation(rc.rotate_coord(row.hpc_x,row.hpc_y,Eobs,ewcs,obs_out=Sobs,wcs_out=so_wcs))
+            hpc_x_rotated.append(aiac.rotated_x_arcsec)
+            hpc_y_rotated.append(aiac.rotated_y_arcsec)
+            hpc_lon_rotated.append(aiac.rotated_lon_deg)
+            hpc_lat_rotated.append(aiac.rotated_lat_deg)
+        if Bproj:
+            bprojc=try_rotation(rc.rotate_coord(row.Bproj_x,row.Bproj_y,Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
+            Bproj_x_rotated.append(bprojc.rotated_x_arcsec)
+            Bproj_y_rotated.append(bprojc.rotated_y_arcsec)
+            Bproj_lon_rotated.append(bprojc.rotated_lon_deg)
+            Bproj_lat_rotated.append(bprojc.rotated_lat_deg)
+        if CFL:
+            cflc=try_rotation(rc.rotate_coord(row['CFL_LOC_X(arcsec)'],row['CFL_LOC_Y (arcsec)'],Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
+            CFL_x_rotated.append(cflc.rotated_x_arcsec)
+            CFL_y_rotated.append(cflc.rotated_y_arcsec)
+            CFL_lon_rotated.append(cflc.rotated_lon_deg)
+            CFL_lat_rotated.append(cflc.rotated_lat_deg)
         
         #scS=SkyCoord(aiac.hpc_x_rotated,aiac.hpc_y_rotated,unit=u.arcsec,frame='helioprojective',obstime=d)
         #slon,slat=hpc_to_hpr(scS,SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=Sobs.obstime,observer=Sobs,frame='helioprojective'))
@@ -254,20 +258,21 @@ def update_all_rotations(df,istart=False,istop=False,verbose=True):
     #    if 'rotated' in k:
     #        df[k]=v
     
-    df['hpc_x_rotated']=hpc_x_rotated
-    df['hpc_y_rotated']=hpc_y_rotated
-    df['hpc_lon_rotated']=hpc_lon_rotated
-    df['hpc_lat_rotated']=hpc_lat_rotated
-    
-    df['Bproj_x_rotated']=Bproj_x_rotated
-    df['Bproj_y_rotated']=Bproj_y_rotated
-    df['Bproj_lon_rotated']=Bproj_lon_rotated
-    df['Bproj_lat_rotated']=Bproj_lat_rotated
-    
-    df['CFL_x_rotated']=CFL_x_rotated
-    df['CFL_y_rotated']=CFL_y_rotated
-    df['CFL_lon_rotated']=CFL_lon_rotated
-    df['CFL_lat_rotated']=CFL_lat_rotated
+    if AIA:
+        df['hpc_x_rotated']=hpc_x_rotated
+        df['hpc_y_rotated']=hpc_y_rotated
+        df['hpc_lon_rotated']=hpc_lon_rotated
+        df['hpc_lat_rotated']=hpc_lat_rotated
+    if Bproj:
+        df['Bproj_x_rotated']=Bproj_x_rotated
+        df['Bproj_y_rotated']=Bproj_y_rotated
+        df['Bproj_lon_rotated']=Bproj_lon_rotated
+        df['Bproj_lat_rotated']=Bproj_lat_rotated
+    if CFL:
+        df['CFL_x_rotated']=CFL_x_rotated
+        df['CFL_y_rotated']=CFL_y_rotated
+        df['CFL_lon_rotated']=CFL_lon_rotated
+        df['CFL_lat_rotated']=CFL_lat_rotated
     
     return df
     
