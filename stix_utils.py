@@ -85,6 +85,23 @@ def load_SOLO_SPICE(obs_date, path_kernel='/Users/wheatley/Documents/Solar/STIX/
     #change back to original working directory
     os.chdir(cwd)
 
+def locations_over_time(start_date,end_date,fn=coordinates_SOLO,body=None,output_unit=u.AU):
+    '''return HEE locations of SOLO over given time period'''
+    date_range=pd.date_range(start_date,end_date)
+    hee=[]
+    for d in date_range:
+        if body:
+            hee.append(coordinates_body(d,body))
+        else:
+            hee.append(fn(d))
+        
+    xkm,ykm,zkm=[],[],[]
+    #print(f"Units: HEE_x {hee[0].x.unit}, HEE_y {hee[0].y.unit}, HEE_z {hee[0].z.unit}")
+    for h in hee:
+        xkm.append(h.x.to(output_unit).value)
+        ykm.append(h.y.to(output_unit).value)
+        zkm.append(h.z.to(output_unit).value)
+    return xkm,ykm,zkm
     
 def parse_sunspice_name_py(spacecraft):
     '''python version of sswidl parse_sunspice_name.pro '''
@@ -219,30 +236,61 @@ def update_all_rotations(df,istart=False,istop=False,verbose=True, AIA=True, Bpr
         if type(istart) == int and i < istart:
             continue
         d=row.Datetime
-        Eobs,ewcs=get_AIA_observer(d,wcs=True)
-        scE=SkyCoord(row.hpc_x,row.hpc_y,unit=u.arcsec,frame='helioprojective',obstime=d)
-        Sobs=get_SO_observer(d)
-        so_wcs=get_SO_wcs(d)
+        observers=None
+#        Eobs,ewcs=get_AIA_observer(d,wcs=True)
+#        #scE=SkyCoord(row.hpc_x,row.hpc_y,unit=u.arcsec,frame='helioprojective',obstime=d)
+#        Sobs=get_SO_observer(d)
+#        so_wcs=get_SO_wcs(d)
         
         #re-rotate hpc to AIA pov. In fact, re-rotate everything...
         if AIA:
-            aiac=try_rotation(rc.rotate_coord(row.hpc_x,row.hpc_y,Eobs,ewcs,obs_out=Sobs,wcs_out=so_wcs))
-            hpc_x_rotated.append(aiac.rotated_x_arcsec)
-            hpc_y_rotated.append(aiac.rotated_y_arcsec)
-            hpc_lon_rotated.append(aiac.rotated_lon_deg)
-            hpc_lat_rotated.append(aiac.rotated_lat_deg)
+            if np.isnan(row.hpc_x) and np.isnan(row.hpc_y):
+                hpc_x_rotated.append(np.nan)
+                hpc_y_rotated.append(np.nan)
+                hpc_lon_rotated.append(np.nan)
+                hpc_lat_rotated.append(np.nan)
+            else:
+                if observers==None:
+                    observers=both_observers(d)
+                else:
+                    Eobs, ewcs,Sobs,so_wcs=observers
+                aiac=try_rotation(rc.rotate_coord(row.hpc_x,row.hpc_y,Eobs,ewcs,obs_out=Sobs,wcs_out=so_wcs))
+                hpc_x_rotated.append(aiac.rotated_x_arcsec)
+                hpc_y_rotated.append(aiac.rotated_y_arcsec)
+                hpc_lon_rotated.append(aiac.rotated_lon_deg)
+                hpc_lat_rotated.append(aiac.rotated_lat_deg)
         if Bproj:
-            bprojc=try_rotation(rc.rotate_coord(row.Bproj_x,row.Bproj_y,Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
-            Bproj_x_rotated.append(bprojc.rotated_x_arcsec)
-            Bproj_y_rotated.append(bprojc.rotated_y_arcsec)
-            Bproj_lon_rotated.append(bprojc.rotated_lon_deg)
-            Bproj_lat_rotated.append(bprojc.rotated_lat_deg)
+            if np.isnan(row.Bproj_x) and np.isnan(row.Bproj_y):
+                Bproj_x_rotated.append(np.nan)
+                Bproj_y_rotated.append(np.nan)
+                Bproj_lon_rotated.append(np.nan)
+                Bproj_lat_rotated.append(np.nan)
+            else:
+                if observers==None:
+                    observers=both_observers(d)
+                else:
+                    Eobs, ewcs,Sobs,so_wcs=observers
+                bprojc=try_rotation(rc.rotate_coord(row.Bproj_x,row.Bproj_y,Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
+                Bproj_x_rotated.append(bprojc.rotated_x_arcsec)
+                Bproj_y_rotated.append(bprojc.rotated_y_arcsec)
+                Bproj_lon_rotated.append(bprojc.rotated_lon_deg)
+                Bproj_lat_rotated.append(bprojc.rotated_lat_deg)
         if CFL:
-            cflc=try_rotation(rc.rotate_coord(row['CFL_LOC_X(arcsec)'],row['CFL_LOC_Y (arcsec)'],Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
-            CFL_x_rotated.append(cflc.rotated_x_arcsec)
-            CFL_y_rotated.append(cflc.rotated_y_arcsec)
-            CFL_lon_rotated.append(cflc.rotated_lon_deg)
-            CFL_lat_rotated.append(cflc.rotated_lat_deg)
+            if np.isnan(row['CFL_LOC_X(arcsec)']) and np.isnan(row['CFL_LOC_Y (arcsec)']):
+                CFL_x_rotated.append(np.nan)
+                CFL_y_rotated.append(np.nan)
+                CFL_lon_rotated.append(np.nan)
+                CFL_lat_rotated.append(np.nan)
+            else:
+                if observers==None:
+                    observers=both_observers(d)
+                else:
+                    Eobs, ewcs,Sobs,so_wcs=observers
+                cflc=try_rotation(rc.rotate_coord(row['CFL_LOC_X(arcsec)'],row['CFL_LOC_Y (arcsec)'],Sobs,so_wcs,obs_out=Eobs,wcs_out=ewcs))
+                CFL_x_rotated.append(cflc.rotated_x_arcsec)
+                CFL_y_rotated.append(cflc.rotated_y_arcsec)
+                CFL_lon_rotated.append(cflc.rotated_lon_deg)
+                CFL_lat_rotated.append(cflc.rotated_lat_deg)
         
         #scS=SkyCoord(aiac.hpc_x_rotated,aiac.hpc_y_rotated,unit=u.arcsec,frame='helioprojective',obstime=d)
         #slon,slat=hpc_to_hpr(scS,SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=Sobs.obstime,observer=Sobs,frame='helioprojective'))
@@ -275,6 +323,15 @@ def update_all_rotations(df,istart=False,istop=False,verbose=True, AIA=True, Bpr
         df['CFL_lat_rotated']=CFL_lat_rotated
     
     return df
+    
+def both_observers(d):
+    '''AIA and SO observers for a given datetime '''
+    d=row.Datetime
+    Eobs,ewcs=get_AIA_observer(d,wcs=True)
+    Sobs=get_SO_observer(d)
+    so_wcs=get_SO_wcs(d)
+    return [Eobs, ewcs,Sobs,so_wcs]
+
     
 def try_rotation(rcoord):
     '''if you want to get past the error thrown by un-rotateable coords '''

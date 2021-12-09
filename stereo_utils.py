@@ -16,6 +16,35 @@ from datetime import datetime as dt
 from datetime import timedelta as td
 import os
 from sunpy_map_utils import find_centroid_from_map
+import heliopy.data.spice as spicedata
+import heliopy.spice as hespice
+import spiceypy as spice
+
+def load_STEREO_SPICE(obs_date, path_kernel='/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk/'):
+    """
+    Load the SPICE kernel that will be used to get the
+    coordinates of the different spacecrafts.
+    """
+    #get cwd
+    cwd=os.getcwd()
+
+    # For STEREO
+    stereo_kernel = spicedata.get_kernel('stereo_a')
+    hespice.furnish(stereo_kernel)
+
+    # Change the CWD to the given path. Necessary to load correctly all kernels
+    os.chdir(path_kernel)
+
+    # Load one (or more) SPICE kernel into the program
+    #spiceypy.spiceypy.furnsh(spice_kernel)
+
+    print()
+    print('SPICE kernels loaded correctly')
+    print()
+
+    #change back to original working directory
+    os.chdir(cwd)
+
 
 def get_fits_times(flist):
     dlist=[]

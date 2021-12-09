@@ -44,8 +44,10 @@ def goes_class_to_flux(class_in):
     gdict={'A':-8,'B':-7,'C':-6,'M':-5,'X':-4}
     if len(class_in) > 1:
         goes_flux=float(class_in[1:])*10**gdict[class_in[0]]
-    else: #just the letter
+    elif class_in !='': #just the letter
         goes_flux=10**gdict[class_in[0]]
+    else:
+        goes_flux=None
     return goes_flux
 
 def goes_flux_to_class(flux_in):
