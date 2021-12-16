@@ -101,7 +101,7 @@ def locations_over_time(start_date,end_date,fn=coordinates_SOLO,body=None,output
         xkm.append(h.x.to(output_unit).value)
         ykm.append(h.y.to(output_unit).value)
         zkm.append(h.z.to(output_unit).value)
-    return xkm,ykm,zkm
+    return date_range,xkm,ykm,zkm
     
 def parse_sunspice_name_py(spacecraft):
     '''python version of sswidl parse_sunspice_name.pro '''
