@@ -24,7 +24,7 @@ def spacecraft_to_earth_time(date_in,load_spice=False):
     if type(date_in) != dt:
         date_in=pd.to_datetime(date_in)
     if load_spice:
-        load_SPICE(date_in,"/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk")
+        load_SPICE(date_in,os.environ['SPICE'])
     _,lighttime=coordinates_SOLO(date_in,light_time=True)
     return date_in + td(seconds=lighttime)
     
@@ -35,7 +35,7 @@ def get_rsun_apparent(date_in,observer=False, spacecraft='SO',sc=True):
         obs=observer
     return solar_angular_radius(obs)
     
-def load_SOLO_SPICE(obs_date, path_kernel='/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk/'):
+def load_SOLO_SPICE(obs_date, path_kernel=os.environ['SPICE']):
     """
     Load the SPICE kernel that will be used to get the
     coordinates of the different spacecrafts.
@@ -44,7 +44,8 @@ def load_SOLO_SPICE(obs_date, path_kernel='/Users/wheatley/Documents/Solar/STIX/
     cwd=os.getcwd()
 
     # Convert string format to datetime
-    obs_date = dt.strptime(obs_date, '%Y-%m-%dT%H:%M:%S')
+    if type(obs_date) ==str:
+        obs_date = dt.strptime(obs_date, '%Y-%m-%dT%H:%M:%S')
 
     # Check if path_kernel has folder format
     if path_kernel[-1] != '/':
@@ -142,7 +143,7 @@ def parse_sunspice_name_py(spacecraft):
     else:
         raise TypeError("Input spacecraft name must be string")
     
-def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True, radians=False,tolerance=100,kernel_path='/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk'):
+def get_sunspice_roll_py(datestr, spacecraft, system='SOLO_SUN_RTN',degrees=True, radians=False,tolerance=100,kernel_path=os.environ['SPICE']):
     '''Python version of (simpler) sswidl get_sunspice_roll.pro . Assumes spice kernel already furnished'''
     units = float(180)/np.pi
     if radians: units = 1
@@ -225,7 +226,7 @@ def update_all_rotations(df,istart=False,istop=False,verbose=True, AIA=True, Bpr
     start_time=dt.now()
     #load spice kernels
     #print(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'))
-    load_SPICE(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'), "/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk")
+    load_SPICE(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'), os.environ['SPICE'])
     if AIA:
         hpc_x_rotated,hpc_y_rotated,hpc_lon_rotated,hpc_lat_rotated=[],[],[],[]
     if Bproj:

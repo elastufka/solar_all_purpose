@@ -133,7 +133,7 @@ def corr_plot(df):
             square=True, linewidths=.5, cbar_kws={"shrink": .5})
     return f
 
-def locations_on_disk(xloc,yloc,solrad=None, deg=False,msizes=None):
+def locations_on_disk(xloc,yloc,solrad=None, deg=False,percent=False,msizes=None):
     ''' Plot cartesian flare locations on solar disk using Plotly. '''
     if not solrad: #use sunpy default
         try: #sunpy < 3
@@ -147,6 +147,10 @@ def locations_on_disk(xloc,yloc,solrad=None, deg=False,msizes=None):
     if deg:
         rsun_arcsec=90
         axbounds=100
+        
+    if percent:
+        rsun_arcsec=1
+        axbounds=1.1
         
     fig=go.Figure()
     fig.add_shape(type="circle",
