@@ -23,27 +23,59 @@ from matplotlib import cm
 import pidly
 from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
 
-from flux_in_boxes import track_region_box
+#from flux_in_boxes import track_region_box
 from sunpy_map_utils import find_centroid_from_map, make_submaps
 #from aiapy.calibrate import *
 #from aiapy.response import Channel
+from aiapy.calibrate import normalize_exposure, register, update_pointing
 
-def aia_prep_py(files,expnorm=True,tofits=True):
+def download_aia_cutout(time_start,time_end,bottom_left_coord, top_right_coord,jsoc_email='erica.lastufka@fhnw.ch',wlen=171,folder_store='.'):
+    if type(date_obs) == str:
+        date_obs=pd.to_datetime(date_obs)
+        
+    if wlen in [1600,1700]:
+        series=a.jsoc.Series.aia_lev1_uv_24s,
+    else:
+        series=a.jsoc.Series.aia_lev1_euv_12s,
+        
+    cutout = a.jsoc.Cutout(bottom_left_coord,top_right=top_right_coord)
+
+    if not jsoc_email:
+        jsoc_email = os.environ["JSOC_EMAIL"]
+
+    q = Fido.search(
+        a.Time(time_start,time_end),
+        a.Wavelength(wlen*u.angstrom),
+        series,
+        a.jsoc.Notify(jsoc_email),
+        a.jsoc.Segment.image,
+        cutout,
+    )
+
+    files = Fido.fetch(q,path=folder_store)
+    return files
+
+def aia_prep_py(files,expnorm=True,tofits=True,path=''):
     '''aia_prep using aiapy instead of IDL
     from https://aiapy.readthedocs.io/en/latest/generated/gallery/prepping_level_1_data.html'''
+    maplist=[]
     for f in files:
         m= sunpy.map.Map(f)
-        m_updated_pointing = update_pointing(m)
-        m_registered = register(m_updated_pointing)
+        try:
+            m_updated_pointing = update_pointing(m)
+            m_registered = register(m_updated_pointing)
+        except ValueError: #not full-disk image
+            m_registered=m
         if expnorm:
             m_out = normalize_exposure(m_registered)
         else:
             m_out=m_registered
         if tofits: #save to fitsfile
-            fname=f[:-4]+'_prepped.fits'
-            m.save(fname,'.fits')
-    if not tofits:
-        return maplist
+            fname=f"{path}{f[:-4]}_prepped.fits"
+            m.save(fname)
+        maplist.append(m)
+    #if not tofits:
+    return maplist
     
 def aia_correct_degradation(maplist):
     '''correct for telescope degradation over time
