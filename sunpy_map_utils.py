@@ -92,6 +92,31 @@ def query_hek(time_int,event_type='FL',obs_instrument='AIA',small_df=True,single
             return pd.DataFrame(df.iloc[0]).T
     df.drop_duplicates(inplace=True)
     return df
+    
+def smart_reproject(mcutout,sobs,instrument='STIX',observatory='Solar Orbiter'):
+    refcoord=SkyCoord(0,0,unit=u.arcsec,frame='helioprojective',observer=sobs,obstime=sobs.obstime)
+    stix_ref_coord=mcutout.reference_coordinate.transform_to(refcoord.frame)
+    blr=mcutout.bottom_left_coord.transform_to(refcoord.frame)
+    trr=mcutout.top_right_coord.transform_to(refcoord.frame)
+    width, height=cartesian_diff(blr,trr) #arcsec
+    scale=(1., 1.)*(sobs.radius.to(u.AU).value*u.arcsec/u.pixel)
+    out_shape=(int((height/scale[1]).value),int((width/scale[0]).value)) #pixel extent, index at 1
+    submap_header=sunpy.map.make_fitswcs_header(out_shape, refcoord,
+                                      scale=scale,
+                                      instrument=instrument,observatory=observatory)
+    scrpix=new_crpix(mcutout,stix_ref_coord,scale)
+    submap_header['crpix1']=scrpix[0]
+    submap_header['crpix2']=scrpix[1]
+    #output, _ = reproject_interp(mcutout, Header(submap_header))
+    #rotated_map = Map((output, submap_header))
+    rotated_map=mcutout.reproject_to(submap_header)
+    return rotated_map
+    
+def new_crpix(mcutout,stix_ref_coord,scale):
+    mcrpix=mcutout.wcs.wcs.crpix
+    stix_aia_offset=(stix_ref_coord.Tx.value, stix_ref_coord.Ty.value)/scale.value
+    new_crpix=(mcrpix-stix_aia_offset)*scale.value
+    return new_crpix
 
 def get_limbcoords(aia_map):
     r = aia_map.rsun_obs - 1 * u.arcsec  # remove one arcsec so it's on disk.

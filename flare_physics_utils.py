@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 
 from dem_utils import read_tresp_matrix
 from scipy import constants
-#import astropy.units as u
-#from astropy.coordinates import SkyCoord
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 ##import wcsaxes
 #from astropy.wcs import WCS
 #
@@ -61,6 +61,16 @@ def goes_flux_to_class(flux_in):
             letter='X'
     number=np.round(flux_in/(10**int(np.log10(flux_in))),2)
     return letter+str(number)
+    
+def cartesian_diff(sc1,sc2):
+    '''returns cartesian difference between skycoords '''
+    if isinstance(sc1,SkyCoord) and isinstance(sc2,SkyCoord):
+        try:
+            return max([sc1.Tx,sc2.Tx])-min([sc1.Tx,sc2.Tx]),max([sc1.Ty,sc2.Ty])-min([sc1.Ty,sc2.Ty])
+        except AttributeError:
+            raise AttributeError("Input must be Cartesian!")
+    else:
+        raise TypeError("Input must be SkyCoords!")
     
 def get_XRT_resp(tr_logt, date, filter='Be-Thin'):
     '''run tresp_be_thin43 in IDL. from ssw documentation:
