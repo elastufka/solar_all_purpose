@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 
-from dem_utils import read_tresp_matrix
 from scipy import constants
 import astropy.units as u
 from astropy.coordinates import SkyCoord
@@ -62,11 +61,14 @@ def goes_flux_to_class(flux_in):
     number=np.round(flux_in/(10**int(np.log10(flux_in))),2)
     return letter+str(number)
     
-def cartesian_diff(sc1,sc2):
+def cartesian_diff(sc1,sc2,index=0):
     '''returns cartesian difference between skycoords '''
     if isinstance(sc1,SkyCoord) and isinstance(sc2,SkyCoord):
         try:
-            return max([sc1.Tx,sc2.Tx])-min([sc1.Tx,sc2.Tx]),max([sc1.Ty,sc2.Ty])-min([sc1.Ty,sc2.Ty])
+            cdiff=(max([sc1.Tx,sc2.Tx])-min([sc1.Tx,sc2.Tx]),max([sc1.Ty,sc2.Ty])-min([sc1.Ty,sc2.Ty]))
+            if index == 1:
+                cdiff=tuple(reversed(cdiff))
+            return cdiff
         except AttributeError:
             raise AttributeError("Input must be Cartesian!")
     else:
@@ -134,6 +136,8 @@ def expected_AIA_flux(EM,T,wavelength, size=None,log=False, trmatrix=False,tresp
     
     Boerner, P. F., Testa, P., Warren, H., Weber, M. A., & Schrijver,
     C. J. 2014, Sol. Phys., 289, 2377'''
+    from dem_utils import read_tresp_matrix
+
     wavs=[94,131,171,193,211,335]
     if type(trmatrix) != np.array or type(tresp_logt) != np.array:
         _,_,trmatrix,tresp_logt=read_tresp_matrix(plot=False)

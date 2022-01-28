@@ -8,7 +8,8 @@ from astropy.wcs import WCS
 import sunpy.map
 import sunpy.coordinates
 import sunpy.coordinates.wcs_utils
-import sunpy.net as sn
+from sunpy.net import Fido
+from sunpy.net import attrs as a
 import numpy as np
 import numpy.ma as ma
 import matplotlib.dates as mdates
@@ -27,46 +28,51 @@ from scipy.ndimage import sobel
 from skimage.measure import find_contours
 import pickle
 import cmath
+from flare_physics_utils import cartesian_diff
+from visible_from_earth import get_observer
 
-def query_fido(time_int, instrument, wave, series='aia_lev1_euv_12s', cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False):
+def query_fido(time_int, wave, series='aia_lev1_euv_12s', cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False,single_result=True):
     '''query VSO database for data and download it. Cutout coords will be converted to SkyCoords if not already in those units. For cutout need sunpy 3.0+
     Series are named here: http://jsoc.stanford.edu/JsocSeries_DataProducts_map.html but with . replaced with _'''
     if type(time_int[0]) == str:
         time_int[0]=dt.strptime(time_int[0],'%Y-%m-%dT%H:%M:%S')
         time_int[1]=dt.strptime(time_int[1],'%Y-%m-%dT%H:%M:%S')
         
-    wave=sn.attrs.Wavelength(wave*u.angstrom)#(wave-.1)* u.angstrom, (wave+.1)* u.angstrom)
+    wave=a.Wavelength(wave*u.angstrom)#(wave-.1)* u.angstrom, (wave+.1)* u.angstrom)
     #instr= sn.attrs.Instrument(instrument)
-    time = sn.attrs.Time(time_int[0],time_int[1])
-    series=getattr(sn.attrs.jsoc.Series,series) #is this only needed when using jsoc however?
-    qs=[time,wave, series]
+    time = a.Time(time_int[0],time_int[1])
+    series=getattr(a.jsoc.Series,series) #is this only needed when using jsoc however?
+    qs=[time,series,wave] #(series & wave)]
 
     if cutout_coords != False:
         if type(cutout_coords[0]) == SkyCoord and type(cutout_coords[1]) == SkyCoord:
             bottom_left_coord,top_right_coord=cutout_coords
         else: #convert to skycoord, assume earth-observer at start time. If non-earth observer used, must pass cutout_coords as skycoords in desired frame
+            t0=time_int[0]
             bottom_left_coord=SkyCoord(cutout_coords[0][0]*u.arcsec, cutout_coords[0][1]*u.arcsec,obstime=t0,frame=sunpy.coordinates.frames.Helioprojective)
             top_right_coord=SkyCoord(cutout_coords[1][0]*u.arcsec, cutout_coords[1][0]*u.arcsec, obstime=t0,frame=sunpy.coordinates.frames.Helioprojective)
 
             
-        cutout = sn.attrs.jsoc.Cutout(bottom_left_coord,top_right=top_right_coord,tracking=track_region)
+        cutout = a.jsoc.Cutout(bottom_left_coord,top_right=top_right_coord,tracking=track_region)
         
         qs.append(cutout)
-        qs.append(sn.attrs.jsoc.Notify(jsoc_email))
+        qs.append(a.jsoc.Notify(jsoc_email))
         #qs.append(vso.attrs.jsoc.Segment.image)
         #qs.append(vso.atrs..jsoc.Series.aia_lev1_euv_12s) #this is essential now...
         
     if source:
-        source=sn.attrs.Source(source)
+        source=a.Source(source)
         qs.append(source)
     if sample: #Quantity
-        sample = sn.attrs.Sample(sample)
+        sample = a.Sample(sample)
         qs.append(sample)
 
-    res = sn.Fido.search(*qs)
+    res = Fido.search(*qs)
+    if single_result:
+        res=res[0]
     #print(qs, path, res)
-    if not path: files = sn.Fido.fetch(res,path='./{file}').wait()
-    else: files = sn.Fido.fetch(res).wait()
+    if not path: files = Fido.fetch(res,path='./')
+    else: files = Fido.fetch(res,path=f"{path}/")
     return res #prints nicely in notebook at any rate
     
 def query_hek(time_int,event_type='FL',obs_instrument='AIA',small_df=True,single_result=False):
@@ -93,30 +99,56 @@ def query_hek(time_int,event_type='FL',obs_instrument='AIA',small_df=True,single
     df.drop_duplicates(inplace=True)
     return df
     
-def smart_reproject(mcutout,sobs,instrument='STIX',observatory='Solar Orbiter'):
-    refcoord=SkyCoord(0,0,unit=u.arcsec,frame='helioprojective',observer=sobs,obstime=sobs.obstime)
-    stix_ref_coord=mcutout.reference_coordinate.transform_to(refcoord.frame)
-    blr=mcutout.bottom_left_coord.transform_to(refcoord.frame)
-    trr=mcutout.top_right_coord.transform_to(refcoord.frame)
-    width, height=cartesian_diff(blr,trr) #arcsec
-    scale=(1., 1.)*(sobs.radius.to(u.AU).value*u.arcsec/u.pixel)
-    out_shape=(int((height/scale[1]).value),int((width/scale[0]).value)) #pixel extent, index at 1
-    submap_header=sunpy.map.make_fitswcs_header(out_shape, refcoord,
-                                      scale=scale,
-                                      instrument=instrument,observatory=observatory)
-    scrpix=new_crpix(mcutout,stix_ref_coord,scale)
-    submap_header['crpix1']=scrpix[0]
-    submap_header['crpix2']=scrpix[1]
-    #output, _ = reproject_interp(mcutout, Header(submap_header))
-    #rotated_map = Map((output, submap_header))
+def transform_observer(mcutout,sobs,swcs,scale=None):
+   #deal with off-disk... if there are off-disk pixels in input, only consider on-disk
+    #refcoord=SkyCoord(0,0,unit=u.arcsec,frame=sobs.frame)#='helioprojective',observer=sobs,obstime=sobs.obstime)
+    #stix_ref_coord=mcutout.reference_coordinate.transform_to(sobs.frame)
+    #blr=mcutout.bottom_left_coord.transform_to(sobs.frame)
+    #trr=mcutout.top_right_coord.transform_to(sobs.frame)
+    #if np.isnan([blr.Tx.value,blr.Ty.value]).any() or np.isnan([trr.Tx.value,trr.Ty.value]).any():
+    #    blr,trr=rotated_bounds_on_disk(mcutout,sobs.frame)
+    
+    # Obtain the pixel locations of the edges of the reprojected map
+    edges_pix = np.concatenate(sunpy.map.map_edges(mcutout))
+    edges_coord = mcutout.pixel_to_world(edges_pix[:, 0], edges_pix[:, 1])
+    new_edges_coord = edges_coord.transform_to(sobs)
+    new_edges_xpix, new_edges_ypix = swcs.world_to_pixel(new_edges_coord)
+
+    # Determine the extent needed
+    left, right = np.min(new_edges_xpix), np.max(new_edges_xpix)
+    bottom, top = np.min(new_edges_ypix), np.max(new_edges_ypix)
+    
+    #if scale:
+    #    scale=(1., 1.)*sobs.observer.radius/u.AU*u.arcsec/u.pixel
+
+    # Adjust the CRPIX and NAXIS values
+    modified_header = sunpy.map.make_fitswcs_header((1, 1), sobs,scale=scale)
+    modified_header['crpix1'] -= left
+    modified_header['crpix2'] -= bottom
+    modified_header['naxis1'] = int(np.ceil(right - left))
+    modified_header['naxis2'] = int(np.ceil(top - bottom))
+    
+    return modified_header
+    
+def smart_reproject(mcutout,observatory='Solar Orbiter',scale=None):
+    sobs,swcs=get_observer(pd.to_datetime(mcutout.meta['date-obs']),obs=observatory,sc=True, out_shape=(1,1),scale=scale)
+    submap_header=transform_observer(mcutout,sobs,swcs,scale=scale)
     rotated_map=mcutout.reproject_to(submap_header)
     return rotated_map
-    
-def new_crpix(mcutout,stix_ref_coord,scale):
-    mcrpix=mcutout.wcs.wcs.crpix
-    stix_aia_offset=(stix_ref_coord.Tx.value, stix_ref_coord.Ty.value)/scale.value
-    new_crpix=(mcrpix-stix_aia_offset)*scale.value
-    return new_crpix
+
+def rotate_all_coords(mcutout,frame):
+    return sunpy.map.all_coordinates_from_map(mcutout).transform_to(frame)
+
+def rotated_bounds_on_disk(smap,frame):
+    '''use this to determine extent of rotated shape in case bottom left and top right don't work out...'''
+    cc=rotate_all_coords(smap,frame)
+    on_disk=sunpy.map.coordinate_is_on_solar_disk(cc)
+    on_disk_coordinates=cc[on_disk]
+    tx = on_disk_coordinates.Tx.value
+    ty = on_disk_coordinates.Ty.value
+    return SkyCoord([np.nanmin(tx), np.nanmax(tx)] * u.arcsec,
+                    [np.nanmin(ty), np.nanmax(ty)] * u.arcsec,
+                    frame=smap.coordinate_frame)
 
 def get_limbcoords(aia_map):
     r = aia_map.rsun_obs - 1 * u.arcsec  # remove one arcsec so it's on disk.
@@ -329,7 +361,7 @@ def bin_single_image(im,n=2):
     return g6_arr #but make it an array...
 
 #difference maps
-def diff_maps(mlist):
+def diff_maps(mlist,mask_zeros=False):
     mdifflist=[]
     m0=mlist[0].data
     for m in mlist[1:]:
@@ -342,7 +374,11 @@ def diff_maps(mlist):
                 mdata=m.data[1:][:]
             m.data.reshape(m0.shape)
             diff=m.data-m0
-        map_diff=sunpy.map.Map(diff,m.meta)
+        if mask_zeros:
+            diff=np.ma.masked_equal(diff,0)
+            map_diff=sunpy.map.Map(diff,m.meta,mask=diff.mask)
+        else:
+            map_diff=sunpy.map.Map(diff,m.meta)
         mdifflist.append(map_diff)
     return mdifflist
 

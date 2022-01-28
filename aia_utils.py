@@ -30,6 +30,7 @@ from sunpy_map_utils import find_centroid_from_map, make_submaps
 from aiapy.calibrate import normalize_exposure, register, update_pointing
 
 def download_aia_cutout(time_start,time_end,bottom_left_coord, top_right_coord,jsoc_email='erica.lastufka@fhnw.ch',wlen=171,folder_store='.'):
+    '''check query_fido to see how much of this is redundant... '''
     if type(date_obs) == str:
         date_obs=pd.to_datetime(date_obs)
         
@@ -71,7 +72,10 @@ def aia_prep_py(files,expnorm=True,tofits=True,path=''):
         else:
             m_out=m_registered
         if tofits: #save to fitsfile
-            fname=f"{path}{f[:-4]}_prepped.fits"
+            if '/' not in f:
+                fname=f"{path}{f[:-5]}_prepped.fits"
+            else:
+                fname=f"{f[:-5]}_prepped.fits"
             m.save(fname)
         maplist.append(m)
     #if not tofits:

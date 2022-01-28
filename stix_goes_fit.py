@@ -33,10 +33,10 @@ class STIX_GOES_fit:
         '''Find upper and lower boundaries based on number of input counts and distribution of residuals'''
         df['calculated_flux']=[self.slope*np.log10(pc)+self.intercept for pc in df.peak_counts_corrected]
         df['residuals']=np.log10(df.GOES_flux)-df.calculated_flux
-        for i, bin in enumerate(bins):
+        for i, bin in enumerate(self.bins):
             ebin=10**bin
             try:
-                next_bin=10**bins[i+1]
+                next_bin=10**self.bins[i+1]
                 sigma_bin=df.query("peak_counts_corrected >= @ebin and peak_counts_corrected < @next_bin")['residuals'].dropna().std()
             except IndexError:
                 sigma_bin=df.where(df.peak_counts_corrected >= ebin)['residuals'].dropna().std()

@@ -51,29 +51,49 @@ def get_spacecraft_position(start_date,end_date,spacecraft='SPP', path_kernel="/
         return times,sc_r.value,sc_lat.value,sc_lon.value
     else:
         return times,sc.x.value,sc.y.value,sc.z.value
-    
-def coordinates_body(date_body,body_name,light_time=False):
-    """
-    Load the kernel needed in order to derive the
-    coordinates of the given celestial body and then return them in
-    Heliocentric Earth Ecliptic (HEE) coordinates.
-    """
-
-    # Observing time
-    obstime = spiceypy.datetime2et(date_body)
-
-    # Obtain the coordinates of Solar Orbiter
-    hee_spice, lighttimes = spiceypy.spkpos(body_name, obstime,
-                                     'SOLO_HEE_NASA', #  Reference frame of the output position vector of the object
-                                     'NONE', 'SUN')
-    hee_spice = hee_spice * u.km
-
-    # Convert the coordinates to HEE
-    body_hee = HeliocentricEarthEcliptic(hee_spice,
-                                          obstime=Time(date_body).isot,
-                                          representation_type='cartesian')
-    if not light_time:
-        # Return the HEE coordinates of the body
-        return body_hee
-    else:
-        return body_hee,lighttimes
+        
+#def get_observer(date_in,obs='Earth',wcs=True,sc=False,out_shape=(4096,4096)):
+#    '''Get observer information. Get WCS object if requested. Return Observer as SkyCoord at (0",0") if requested.'''
+#    hee = coordinates_body(date_in, obs)
+#    observer=hee.transform_to(HeliographicStonyhurst(obstime=date_in))
+#    if sc:
+#        observer = SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=date_in,observer=observer,frame='helioprojective')
+#
+#    if wcs == False:
+#        return observer
+#    else:
+#        if isinstance(observer, SkyCoord):
+#            refcoord=observer
+#        else:
+#            refcoord=SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=date_in,observer=observer,frame='helioprojective')
+#
+#        out_header = sunpy.map.make_fitswcs_header(out_shape,refcoord,observatory=obs)
+#
+#        out_wcs = WCS(out_header)
+#        return observer,out_wcs
+#
+#def coordinates_body(date_body,body_name,light_time=False):
+#    """
+#    Load the kernel needed in order to derive the
+#    coordinates of the given celestial body and then return them in
+#    Heliocentric Earth Ecliptic (HEE) coordinates.
+#    """
+#
+#    # Observing time
+#    obstime = spiceypy.datetime2et(date_body)
+#
+#    # Obtain the coordinates of Solar Orbiter
+#    hee_spice, lighttimes = spiceypy.spkpos(body_name, obstime,
+#                                     'SOLO_HEE_NASA', #  Reference frame of the output position vector of the object
+#                                     'NONE', 'SUN')
+#    hee_spice = hee_spice * u.km
+#
+#    # Convert the coordinates to HEE
+#    body_hee = HeliocentricEarthEcliptic(hee_spice,
+#                                          obstime=Time(date_body).isot,
+#                                          representation_type='cartesian')
+#    if not light_time:
+#        # Return the HEE coordinates of the body
+#        return body_hee
+#    else:
+#        return body_hee,lighttimes
