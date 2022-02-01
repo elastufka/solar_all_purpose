@@ -4,11 +4,13 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 #import wcsaxes
 from astropy.wcs import WCS
+import re
 
 import sunpy.map
 import sunpy.coordinates
 import sunpy.coordinates.wcs_utils
-from sunpy.net import vso
+from sunpy.net import Fido #vso
+from sunpy.net import attrs as a
 import numpy as np
 import numpy.ma as ma
 import matplotlib.dates as mdates
@@ -31,13 +33,13 @@ from aiapy.calibrate import normalize_exposure, register, update_pointing
 
 def download_aia_cutout(time_start,time_end,bottom_left_coord, top_right_coord,jsoc_email='erica.lastufka@fhnw.ch',wlen=171,folder_store='.'):
     '''check query_fido to see how much of this is redundant... '''
-    if type(date_obs) == str:
-        date_obs=pd.to_datetime(date_obs)
+    #if type(date_obs) == str:
+    #    date_obs=pd.to_datetime(date_obs)
         
     if wlen in [1600,1700]:
-        series=a.jsoc.Series.aia_lev1_uv_24s,
+        series=a.jsoc.Series.aia_lev1_uv_24s
     else:
-        series=a.jsoc.Series.aia_lev1_euv_12s,
+        series=a.jsoc.Series.aia_lev1_euv_12s
         
     cutout = a.jsoc.Cutout(bottom_left_coord,top_right=top_right_coord)
 
@@ -60,6 +62,7 @@ def aia_prep_py(files,expnorm=True,tofits=True,path=''):
     '''aia_prep using aiapy instead of IDL
     from https://aiapy.readthedocs.io/en/latest/generated/gallery/prepping_level_1_data.html'''
     maplist=[]
+    fnames=[]
     for f in files:
         m= sunpy.map.Map(f)
         try:
@@ -77,9 +80,13 @@ def aia_prep_py(files,expnorm=True,tofits=True,path=''):
             else:
                 fname=f"{f[:-5]}_prepped.fits"
             m.save(fname)
+            fnames.append(fname)
         maplist.append(m)
-    #if not tofits:
-    return maplist
+    if tofits:
+        return fnames
+    else:
+        #if not tofits:
+        return maplist
     
 def aia_correct_degradation(maplist):
     '''correct for telescope degradation over time
@@ -91,11 +98,26 @@ def aia_correct_degradation(maplist):
     
 def get_aia_response_py(obstime,traxis,channels=[94,131,171,193,211,335]):
     '''using AIApy instead of ssw - still need to convert this to a temperature response not a wavelength response! (need chiantifix for that, not yet implemented boo)
-    https://aiapy.readthedocs.io/en/latest/generated/gallery/calculate_response_function.html'''
+    https://aiapy.readthedocs.io/en/latest/generated/gallery/calculate_response_function.html
+    
+    also see Mark's implementation here: https://gitlab.com/LMSAL_HUB/aia_hub/aiapy/-/issues/23'''
     for c in channels:
         chan = Channel(c*u.angstrom)
         r = chan.wavelength_response(obstime=obstime, include_eve_correction=True)
     return trmatrix
+    
+def get_aia_response_idl(obstime):
+    '''wrapper for aia_get_response.pro (wait this is already implemented in dem_utils)'''
+    idl = pidly.IDL('/Users/wheatley/Documents/Solar/sswidl_py.sh')
+    idl('timedepend_date',dt.strftime(obstime.date(),'%Y-%m-%d'))
+    idl('tresp=aia_get_response(/temp,/dn,/evenorm,timedepend_date=timedepend_date)')
+    idl('logte=tresp.logte')
+    idl('trmatrix=tresp.all')
+    logt=idl.logte
+    tresp=idl.trmatrix
+    #get rid of 304 ...
+    trmatrix=np.delete(tresp,6,axis=0)
+    return logt,trmatrix
 
 def aia_prep(files,outdir='.',zip_old=True,preppedfilenames=False):
     '''run AIA prep on given files, clean up'''
@@ -119,6 +141,16 @@ def aia_prep(files,outdir='.',zip_old=True,preppedfilenames=False):
         zipf.close()
     if preppedfilenames:
         return prepped_files
+        
+def timestamp_from_filename(aia_file):
+    '''get timestamp from AIA file '''
+    n1 = re.search(r"\d", aia_file).start()
+    newstr=aia_file[n1:].replace('-','').replace(':','').replace('_','T')
+    try:
+        tstamp=pd.to_datetime(newstr[:16])
+    except Exception:
+        tstamp=timestamp_from_filename(newstr[1:])
+    return tstamp
 
 def pickle_maps(bl,tr,outtag='maps'):
     for w in [94,131,171,193,211,335]:
