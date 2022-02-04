@@ -1,4 +1,4 @@
-0 #######################################
+#######################################
 #display_aia_dem.py
 # Erica Lastufka 15/03/2018  
 
@@ -26,13 +26,49 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 from datetime import datetime as dt
 from scipy.interpolate import interp1d
-from aia_utils import aia_maps_tint, single_time_indices
+from aia_utils import aia_maps_tint, single_time_indices, timestamp_from_filename
 from dn2dem_pos import dn2dem_pos
 from sunpy_map_utils import find_centroid_from_map, arcsec_to_cm, scale_skycoord
 #how to import python version of demreg? need to add that path to my init.py or python_startup script
 import pickle
 import plotly.graph_objects as go
 from visualization_tools import all_six_AIA
+
+def group6(prepped_files):
+    timeinfo=[timestamp_from_filename(f) for f in prepped_files]
+    try:
+        waveinfo=[int(f[f.find('Z')+2:f.rfind('image')-1]) for f in prepped_files] #for jsoc
+    #full_names=[self.path+'/'+f for f in self.prepped_files]
+    except ValueError:
+        waveinfo=[int(f[-8:-5]) for f in prepped_files]
+    ndf=pd.DataFrame({'file':prepped_files,'timestamp':timeinfo,'wavelength':waveinfo})
+    ndf.drop(ndf.where(ndf.wavelength==304).dropna().index,inplace=True)
+    ndf['date']=[t.date() for t in ndf.timestamp]
+    ndf['hour']=[t.hour for t in ndf.timestamp]
+    ndf['minute']=[t.round('min').minute for t in ndf.timestamp]
+    gdf=ndf.groupby(['date','hour','minute'])
+    for name,group in gdf:
+        yield name,group
+        
+def check_datanumbers(prepped_files):
+    means,maxima,exptimes,tstamps=[],[],[],[]
+    for name,group in group6(prepped_files):
+        ff=group.sort_values(by='wavelength')[['file','timestamp']]
+        mapf=[sunpy.map.Map(f) for f in ff['file']]
+        exptimes.append([m.meta['exptime'] for m in mapf])
+        means.append([np.mean(m.data) for m in mapf])
+        maxima.append([np.max(m.data) for m in mapf]) #aia_prep_py doesn't update fits keywords for datamean, datamax, etc
+        tstamps.append(ff['timestamp'].iloc[0])
+
+    fig=go.Figure()
+    for j,c in enumerate([94,131,171,193,211,335]):
+        fig.add_trace(go.Scatter(x=tstamps,y=np.array(exptimes)[:,j],name=f"{c} exptime"))
+        fig.add_trace(go.Scatter(x=tstamps,y=np.array(means)[:,j],name=f"{c} mean"))
+        fig.add_trace(go.Scatter(x=tstamps,y=np.array(maxima)[:,j],name=f"{c} max"))
+        fig.add_trace(go.Scatter(x=tstamps,y=np.array(means)[:,j]/np.array(exptimes)[:,j],name=f"{c} mean/exptime"))
+        fig.add_trace(go.Scatter(x=tstamps,y=np.array(maxima)[:,j]/np.array(exptimes)[:,j],name=f"{c} max/exptime"))
+    return fig
+
 
 def interp_tresp(trmatrix, logt_in,logt_out):
     '''interpolate temperature response matrix onto new vector'''
