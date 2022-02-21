@@ -17,7 +17,7 @@ from pride_colors import *
 from matplotlib.patches import Ellipse
 
         
-def corr_plot(df):
+def corr_plot(df,vmin=None,vmax=0.3):
     '''Plot correlation heatmap with seaborn '''
     corr = df.corr()
     # Generate a mask for the upper triangle
@@ -27,7 +27,7 @@ def corr_plot(df):
     # Generate a custom diverging colormap
     cmap = sns.diverging_palette(230, 20, as_cmap=True)
     # Draw the heatmap with the mask and correct aspect ratio
-    sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
+    sns.heatmap(corr, mask=mask, cmap=cmap, vmin=vmin,vmax=vmax, center=0,
             square=True, linewidths=.5, cbar_kws={"shrink": .5})
     return f
 
@@ -61,3 +61,14 @@ def plot_gmm(gmm, X, label=True, ax=None):
     w_factor = 0.2 / gmm.weights_.max()
     for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_):
         draw_ellipse(pos, covar, alpha=w * w_factor)
+
+def train_val_tf(history,train_key='loss',valkey='val_loss'):
+    '''plot the training and validation loss, accuracy, etc, given a Keras/TensorFlow model'''
+    fig,ax=plt.subplots(figsize=(8,6))
+    ax.plot(history.history[train_key])
+    ax.plot(history.history[value_key])
+    ax.set_title(f'model {train_key}')
+    ax.set_ylabel(f'{train_key}')
+    ax.set_xlabel('epoch')
+    ax.legend(['train', 'valid'], loc='upper left')
+    return fig
