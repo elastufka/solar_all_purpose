@@ -52,15 +52,15 @@ def goes_class_to_flux(class_in):
 def goes_flux_to_class(flux_in):
     gdict={-8:'A',-7:'B',-6:'C',-5:'M',-4:'X'}
     try:
-        letter=gdict[int(np.log10(flux_in))]
+        letter=gdict[np.floor(np.log10(flux_in))]
     except KeyError:
         if np.log10(flux_in) < -8:
             letter='A'
         elif np.log10(flux_in) > -4:
             letter='X'
-    number=np.round(flux_in/(10**int(np.log10(flux_in))),2)
+    number=np.round(flux_in/(10**np.floor(np.log10(flux_in))),1)
     return letter+str(number)
-    
+
 def cartesian_diff(sc1,sc2,index=0):
     '''returns cartesian difference between skycoords '''
     if isinstance(sc1,SkyCoord) and isinstance(sc2,SkyCoord):

@@ -1,5 +1,3 @@
-#import dash_html_components as html
-
 import pandas as pd
 import numpy as np
 
@@ -7,11 +5,9 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 #from datetime import datetime as dt
 #from datetime import timedelta as td
-#import sunpy.map
 from astropy.wcs import WCS
 from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord_to_pixel
 from sunpy_map_utils import hpc_scale
-#import sunpy.net as sn
 
 class rotate_coord:
     '''Takes coordinate (or list of coordinates) and rotates it, converts to pixels or arcseconds. __init__ will generate SkyCoord from inputs and convert to the other unit (pixels or arcsecords). Rotation can then be done by do_rotation()'''
@@ -37,10 +33,9 @@ class rotate_coord:
              self.y_in=list(y_in)
                 
         self.skycoord=self._to_skycoord()
-        #print('original skycoord: ',self.skycoord)
         self.can_rotate=True #in some cases it might not be, see 2021-03-04 07:55:02.128 ValueError with negative distance (behind disk)
         
-        #automatically do arcsec->pix for given coord or vice versa. hold off on rotation for now
+        #do arcsec->pix for given coord or vice versa. hold off on rotation for now
         if self.unit_in == 'arcsec':
             self.x_arcsec=self.x_in
             self.y_arcsec=self.y_in
@@ -53,7 +48,7 @@ class rotate_coord:
             self.x_px=pxx
             self.y_px=pxy
         if self.unit_in == 'deg':
-            self.x_deg=self.x_in #now do I have to rename all my variables...fix this to do things dynamically eventually.
+            self.x_deg=self.x_in
             self.y_deg=self.y_in
             pxx,pxy=self._world_to_pixel()
             if binning > 1:
@@ -103,25 +98,21 @@ class rotate_coord:
         if type(self.x_in) == list:
             try:
                 pxarr=self.skycoord.to_pixel(wcs=self.wcs_in)
-            except ValueError: #distance negative? not that I can tell
+            except ValueError:
                 pxarr=(None,None)
                 self.can_rotate=False
             
             pxx=list(pxarr[0])
             pxy=list(pxarr[1])
-            #pxx,pxy=[],[]
-            #for x,y in pxarr:
-            #    pxx.append(x)
-            #    pxy.append(y)
+
         else:
             try:
                 pxx,pxy=self.skycoord.to_pixel(wcs=self.wcs_in)
-            except ValueError: #distance negative? not that I can tell
+            except ValueError:
                 pxx=None
                 pxy=None
                 self.can_rotate=False
 
-            #pxx,pxy=self.skycoord.to_pixel(wcs=self.wcs_in)
         return pxx,pxy
 
     def _pixel_to_world(self):
@@ -140,23 +131,19 @@ class rotate_coord:
             raise TypeError("Output observer and WCS must be provided in order to rotate coordinate!")
             
         testcoord=SkyCoord(0,0,unit=u.arcsec,frame='helioprojective',observer=self.obs_out,obstime=self.obs_out.obstime)
-        #print("current skycoord: ", self.skycoord)
+        
         rotcoord_arcsec=self.skycoord.transform_to(testcoord.frame)
-        #print("rotated coord: ", rotcoord_arcsec)
+       
         self.rotated_x_arcsec=rotcoord_arcsec.Tx.value.tolist()
         self.rotated_y_arcsec=rotcoord_arcsec.Ty.value.tolist()
         if self.scaling:
-            lon,lat,rsun_apparent=hpc_scale(rotcoord_arcsec,observer=SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=self.obs_out.obstime,observer=self.obs_out,frame='helioprojective')) #does this only work one 1 value? check
+            lon,lat,rsun_apparent=hpc_scale(rotcoord_arcsec,observer=SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=self.obs_out.obstime,observer=self.obs_out,frame='helioprojective'))
             self.rotated_lon_deg=lon
             self.rotated_lat_deg=lat
             self.rsun_apparent=rsun_apparent
         if to_pixel:
             rotcoord_pix=rotcoord_arcsec.to_pixel(self.wcs_out) #tuples
             if type(self.x_in) == list:
-                #pxx,pxy=[],[]
-                #for x,y in rotcoord_pix:
-                #    pxx.append(x/self.binning)
-                #    pxy.append(y/self.binning)
                 pxx=rotcoord_pix[0]/self.binning
                 pxy=rotcoord_pix[1]/self.binning
             else:

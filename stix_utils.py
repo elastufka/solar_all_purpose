@@ -32,7 +32,7 @@ def spacecraft_to_earth_time(date_in,load_spice=False,solo_r=False):
     return date_in + td(seconds=lighttime)
     
 def get_rsun_apparent(date_in,observer=False, spacecraft='SO',sc=True):
-    if observer == False:
+    if isinstance(observer,bool) and observer == False:
         obs = get_observer(date_in,obs=spacecraft,wcs=False,sc=sc)
     else:
         obs=observer
