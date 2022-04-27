@@ -443,7 +443,7 @@ def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False,
         #largest_contour=contour.allsegs[-1][0]
     c =  center_of_mass(largest_contour)
     cs.append(c)
-    hpj=m.pixel_to_world(c[1]*u.pixel,c[0]*u.pixel,origin=0) #does it have to be 0 first then 1 if using matplotlib?
+    hpj=m.pixel_to_world(c[1]*u.pixel,c[0]*u.pixel) #does it have to be 0 first then 1 if using matplotlib?
     hpj_cs.append(hpj)
     if show:
         fig,ax=plt.subplots()
