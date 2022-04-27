@@ -17,6 +17,7 @@ from sunpy.map.maputils import solar_angular_radius
 import spiceypy
 import warnings
 from spiceypy.utils.exceptions import NotFoundError
+from sunpy_map_utils import add_arcsecs
 #from rotate_maps_utils import rotate_hek_coords
 
 def spacecraft_to_earth_time(date_in,load_spice=False,solo_r=False):
