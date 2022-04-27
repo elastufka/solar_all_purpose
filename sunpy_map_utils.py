@@ -99,6 +99,10 @@ def query_hek(time_int,event_type='FL',obs_instrument='AIA',small_df=True,single
     df.drop_duplicates(inplace=True)
     return df
     
+def add_arcsecs():
+    ar=u.def_unit("arcsecs",1*u.arcsec)
+    u.add_enabled_units([ar])
+    
 def transform_observer(mcutout,sobs,swcs,scale=None):
    #deal with off-disk... if there are off-disk pixels in input, only consider on-disk
     #refcoord=SkyCoord(0,0,unit=u.arcsec,frame=sobs.frame)#='helioprojective',observer=sobs,obstime=sobs.obstime)
@@ -428,7 +432,7 @@ def find_centroid_from_map(m,levels=[90],idx=0,show=False, return_as_mask=False,
     ll=np.max(m.data)*np.array(levels)
     
     if method == 'skimage':
-        largest_contour=skimage_contour(m.data,levels[0])
+        largest_contour=skimage_contour(m,levels[0])
     
     else: #use matplotlib
         fig,ax=plt.subplots()
