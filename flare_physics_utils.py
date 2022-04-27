@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from dem_utils import read_tresp_matrix
+#from dem_utils import read_tresp_matrix
 from scipy import constants
 #import astropy.units as u
 #from astropy.coordinates import SkyCoord
@@ -13,7 +13,7 @@ from scipy import constants
 #from sunpy.net import vso
 import numpy as np
 from scipy.special import wofz
-from sunpy_map_utils import *#cm_to_arcsec
+#from sunpy_map_utils import *#cm_to_arcsec
 #import .ma as ma
 #import matplotlib.dates as mdates
 #import pandas as pd

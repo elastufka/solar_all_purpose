@@ -19,13 +19,16 @@ import warnings
 from spiceypy.utils.exceptions import NotFoundError
 #from rotate_maps_utils import rotate_hek_coords
 
-def spacecraft_to_earth_time(date_in,load_spice=False):
+def spacecraft_to_earth_time(date_in,load_spice=False,solo_r=False):
     '''convert Solar Orbiter times at spacecraft to times at earth '''
     if type(date_in) != dt:
         date_in=pd.to_datetime(date_in)
     if load_spice:
         load_SPICE(date_in,os.environ['SPICE'])
-    _,lighttime=coordinates_SOLO(date_in,light_time=True)
+    solo_hee,lighttime=coordinates_SOLO(date_in,light_time=True)
+    if solo_r:
+        stix_r=np.sqrt(solo_hee.x.to(u.AU).value**2+solo_hee.y.to(u.AU).value**2+solo_hee.z.to(u.AU).value**2)
+        return date_in + td(seconds=lighttime), stix_r
     return date_in + td(seconds=lighttime)
     
 def get_rsun_apparent(date_in,observer=False, spacecraft='SO',sc=True):

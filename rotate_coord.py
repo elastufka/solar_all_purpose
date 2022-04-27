@@ -172,9 +172,21 @@ class rotate_coord:
         self.__dict__['wcs_in']=instr
         self.__dict__['wcs_out']=outstr
         if type(self.x_in) == float or type(self.x_in) == int:
-            return pd.DataFrame(self.__dict__,index=pd.Index([0]))
+            try:
+                return pd.DataFrame(self.__dict__,index=pd.Index([0]))
+            except TypeError: #'HeliographicStonyhurst' object
+                sdict=self.__dict__
+                for sc in ['obs_in','wcs_in','obs_out','wcs_out','skycoord']:
+                    sdict.pop(sc)
+                return pd.DataFrame(sdict,index=pd.Index([0]))
         else:
-            return pd.DataFrame(self.__dict__,index=pd.Index(list(range(len(self.x_in)))))
-        
+            try:
+                return pd.DataFrame(self.__dict__,index=pd.Index(list(range(len(self.x_in)))))
+            except TypeError: #'HeliographicStonyhurst' object
+                sdict=self.__dict__
+                for sc in ['obs_in','wcs_in','obs_out','wcs_out','skycoord']:
+                    sdict.pop(sc)
+                return pd.DataFrame(sdict,index=pd.Index(list(range(len(self.x_in)))))
+            
 
         
