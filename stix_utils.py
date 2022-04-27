@@ -88,6 +88,14 @@ def load_SOLO_SPICE(obs_date, path_kernel=os.environ['SPICE']):
 
     #change back to original working directory
     os.chdir(cwd)
+    
+def read_stix_images(im):
+    try:
+        mm=sunpy.map.Map(im)
+    except ValueError:
+        add_arcsecs() #add units then try again
+        mm=sunpy.map.Map(im)
+    return(mm)
 
 def locations_over_time(start_date,end_date,fn=coordinates_SOLO,body=None,output_unit=u.AU):
     '''return HEE locations of SOLO over given time period'''
