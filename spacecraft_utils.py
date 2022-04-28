@@ -37,7 +37,7 @@ def furnish_kernels(spacecraft_list=['psp','stereo_a','stereo_a_pred','bepi_pred
     hespice.furnish(k)
     os.chdir(cwd)
     
-def get_spacecraft_position(start_date,end_date,spacecraft='SPP', path_kernel="/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk",sphere=False):
+def get_spacecraft_position(start_date,end_date,spacecraft='SPP', path_kernel="/Users/wheatley/Documents/Solar/STIX/solar-orbiter/kernels/mk",sphere=False,hgs=False):
     ''' have to be in the kernel directory while calling generate_positions... this is a pretty annoying thing about spicypy'''
     times=pd.date_range(start_date,end_date)
     cwd=os.getcwd()
@@ -45,7 +45,12 @@ def get_spacecraft_position(start_date,end_date,spacecraft='SPP', path_kernel="/
     os.chdir(path_kernel)
     sc.generate_positions(times, 'Sun', 'HEE') #is this HEE? ECLIPJ2000
     os.chdir(cwd)
-    sc.change_units(u.au)
+    if not hgs:
+        sc.change_units(u.au)
+    else:
+        cc=SkyCoord(sc.x,sc.y,sc.z,frame=HeliocentricEarthEcliptic,representation='cartesian',obstime=start_date)
+        hgs_coord=cc.transform_to(HeliographicStonyhurst)
+        return times,hgs_coord.radius.value[0],hgs_coord.lon.value[0],hgs_coord.lat.value[0] #km,deg,deg
     if sphere:
         sc_r, sc_lat, sc_lon=cart2sphere(sc.x,sc.y,sc.z)
         return times,sc_r.value,sc_lat.value,sc_lon.value
