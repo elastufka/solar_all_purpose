@@ -31,7 +31,7 @@ import cmath
 from flare_physics_utils import cartesian_diff
 from visible_from_earth import get_observer
 
-def query_fido(time_int, wave, series='aia_lev1_euv_12s', cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False,single_result=True):
+def query_fido(time_int, wave, series='aia_lev1_euv_12s',instrument=False, cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False,single_result=True):
     '''query VSO database for data and download it. Cutout coords will be converted to SkyCoords if not already in those units. For cutout need sunpy 3.0+
     Series are named here: http://jsoc.stanford.edu/JsocSeries_DataProducts_map.html but with . replaced with _'''
     if type(time_int[0]) == str:
@@ -41,8 +41,12 @@ def query_fido(time_int, wave, series='aia_lev1_euv_12s', cutout_coords=False, j
     wave=a.Wavelength(wave*u.angstrom)#(wave-.1)* u.angstrom, (wave+.1)* u.angstrom)
     #instr= sn.attrs.Instrument(instrument)
     time = a.Time(time_int[0],time_int[1])
-    series=getattr(a.jsoc.Series,series) #is this only needed when using jsoc however?
-    qs=[time,series,wave] #(series & wave)]
+    qs=[time,wave] #(series & wave)]
+    if series:
+        series=getattr(a.jsoc.Series,series) #is this only needed when using jsoc however?
+        qs.append(series)
+    elif instrument:
+        qs.append(a.Instrument(instrument))
 
     if cutout_coords != False:
         if type(cutout_coords[0]) == SkyCoord and type(cutout_coords[1]) == SkyCoord:

@@ -119,6 +119,15 @@ def dem_image(df,T):
     '''T is string temperature '''
     fig=px.imshow(df['dem_' + str(T)][0])
     return fig
+    
+def reverse_colormap(palette_name):
+    '''reverses matplotlib colormap'''
+    if not palette_name.endswith('_r'):
+        new_cdata=cm.revcmap(plt.get_cmap(palette_name)._segmentdata)
+        new_cmap=matplotlib.colors.LinearSegmentedColormap(f'{palette_name}_r',new_cdata)
+        return new_cmap
+    else:
+        return None
 
 def corr_plot(df):
     corr = df.corr()
