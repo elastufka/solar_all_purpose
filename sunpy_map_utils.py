@@ -153,6 +153,15 @@ def rotated_bounds_on_disk(smap,frame):
     return SkyCoord([np.nanmin(tx), np.nanmax(tx)] * u.arcsec,
                     [np.nanmin(ty), np.nanmax(ty)] * u.arcsec,
                     frame=smap.coordinate_frame)
+                    
+def wcs_to_observer(wcs_in):
+    '''Get observer from WCS frame information'''
+    if not isinstance(target_wcs, WCS):
+        wcs_in = WCS(wcs_in)
+    try:
+        return sunpy.coordinates.wcs_utils.reference_coordinate_from_frame(sunpy.coordinates.wcs_utils.solar_wcs_frame_mapping(wcs_in))
+    except NameError: #different sunpy version
+        return SkyCoord(0*u.arcsec,0*u.arcsec,frame=sunpy.coordinates.wcs_utils.solar_wcs_frame_mapping(wcs_in))
 
 def get_limbcoords(aia_map):
     r = aia_map.rsun_obs - 1 * u.arcsec  # remove one arcsec so it's on disk.
