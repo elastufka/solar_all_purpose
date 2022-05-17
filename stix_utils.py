@@ -502,3 +502,30 @@ def query_hek(time_int,event_type='FL',obs_instrument='AIA',small_df=True,single
 
     return df
     
+def process_image_fits(infile):
+    '''get flare datetime and location from image fits file'''
+    fid=infile[infile.find('uid_'):infile.find('uid_')+14]
+    fdate=re.search(r"([0-9]{8}\d*T[0-9]{6})",infile).group(0)
+    #erange=re.search(r"([0-9,.]{1,3}-{1}[0-9,.]{1,4}\w*keV)",infile).group(0)[:-3].split('-')
+    #elow,ehigh=[int(float(er)) for er in erange]
+    mm=sunpy.map.Map(infile)
+    if isinstance(mm,list):
+        for m in mm:
+            if 'CLEAN convolved' in m.meta['origin']:
+                mm=m
+                break
+                
+    hdict=mm.meta
+    hdict['_id']=fid
+    hdict['file_date']=fdate
+    hdict['signal_to_noise']=None
+    
+    if np.nanmin(mm.data)==np.nanmax(mm.data)==np.nanmean(mm.data):
+        return hdict
+        
+    cs,hpj_cs,_=find_centroid_from_map(mm) #do something to check that there is only 1 such contour...
+    hdict['hpc_x_arcsec']=hpj_cs[0].Tx.value
+    hdict['hpc_y_arcsec']=hpj_cs[0].Ty.value
+    hdict['maxpix']=argmax2D(mm.data) #cross-check
+    hdidct['s2n']=np.nanmax(mm.data)/np.nanstd(mm.data)
+    return hdict
