@@ -29,7 +29,7 @@ from skimage.measure import find_contours
 import pickle
 import cmath
 from flare_physics_utils import cartesian_diff
-from visible_from_earth import get_observer
+from spacecraft_utils import get_observer
 
 def query_fido(time_int, wave, series='aia_lev1_euv_12s',instrument=False, cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False,single_result=True):
     '''query VSO database for data and download it. Cutout coords will be converted to SkyCoords if not already in those units. For cutout need sunpy 3.0+
