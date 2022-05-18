@@ -11,7 +11,7 @@ import sunpy
 from astropy.wcs import WCS
 from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord_to_pixel
 import rotate_coord as rc
-from visible_from_earth import *
+from spacecraft_utils import get_observer
 from rotate_maps import load_SPICE, coordinates_SOLO
 from sunpy.map.maputils import solar_angular_radius
 import spiceypy

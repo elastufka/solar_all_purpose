@@ -7,13 +7,15 @@ from astropy import units as u
 from datetime import datetime as dt
 from datetime import timedelta as td
 import sunpy
-#from astropy.wcs import WCS
-#from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord_to_pixel
-#import rotate_coord as rc
+from astropy.wcs import WCS
 from astropy.time import Time
-from visible_from_earth import *
-#from rotate_maps import load_SPICE, coordinates_SOLO
-#from sunpy.map.maputils import solar_angular_radius
+#from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord_to_pixel
+from sunpy.coordinates import Helioprojective
+from sunpy.coordinates.frames import HeliocentricEarthEcliptic, HeliographicStonyhurst
+from sunpy.map.maputils import _verify_coordinate_helioprojective
+from astropy.time import Time
+from sunpy.map import Map, make_fitswcs_header
+import drms
 import spiceypy
 #import warnings
 #from spiceypy.utils.exceptions import NotFoundError
@@ -56,7 +58,117 @@ def get_spacecraft_position(start_date,end_date,spacecraft='SPP', path_kernel="/
         return times,sc_r.value,sc_lat.value,sc_lon.value
     else:
         return times,sc.x.value,sc.y.value,sc.z.value
-        
+ 
+def coordinates_body(date_body,body_name,light_time=False):
+    """
+    Load the kernel needed in order to derive the
+    coordinates of the given celestial body and then return them in
+    Heliocentric Earth Ecliptic (HEE) coordinates.
+    """
+
+    # Observing time
+    obstime = spiceypy.datetime2et(date_body)
+
+    # Obtain the coordinates of Solar Orbiter
+    if body_name == 'SOLO' or body_name == 'SO' or body_name == 'Solar Orbiter':
+        ref_frame = 'SOLO_HEE_NASA'
+    else:
+        ref_frame = 'HEE'
+    hee_spice, lighttimes = spiceypy.spkpos(body_name, obstime,
+                                     ref_frame, #  Reference frame of the output position vector of the object
+                                     'NONE', 'SUN')
+    hee_spice = hee_spice * u.km
+
+    # Convert the coordinates to HEE
+    body_hee = HeliocentricEarthEcliptic(hee_spice,
+                                          obstime=Time(date_body).isot,
+                                          representation_type='cartesian')
+    if not light_time:
+        # Return the HEE coordinates of the body
+        return body_hee
+    else:
+        return body_hee,lighttimes
+
+def get_observer(date_in,obs='Earth',wcs=True,sc=False,wlen=1600,out_shape=(4096,4096),scale=None,rsun=False,hee=False):
+    '''Get observer information. Get WCS object if requested. Return Observer as SkyCoord at (0",0") if requested.'''
+    if obs in ['AIA','SDO']:
+        observer,wcs_out=get_AIA_observer(date_in,wcs=True,sc=sc,wlen=wlen)
+    else:
+        if not hee:
+            hee = coordinates_body(date_in, obs)
+        observer=hee.transform_to(HeliographicStonyhurst(obstime=date_in))
+        if sc:
+            if rsun: #explicity set rsun
+                observer = SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=date_in,observer=observer,rsun=rsun,frame='helioprojective')
+            else:
+                observer = SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=date_in,observer=observer,frame='helioprojective')
+
+    if wcs == False:
+        return observer
+    else:
+        try:
+            return observer,out_wcs
+        except UnboundLocalError:
+            out_wcs=get_wcs(date_in,observer,out_shape=out_shape,scale=scale)
+            return observer,out_wcs
+
+
+def get_AIA_observer(date_obs,sc=False,wcs=True,wlen=1600):
+    '''downloading required keywords from FITS headers. Resulting coordinates can differ from using Earth as observer by as much as 3" (on the limb) but usally will not be more than .5" otherwise.'''
+    date_obs_str=dt.strftime(date_obs,"%Y.%b.%d_%H:%M:%S")
+    client = drms.Client()
+    kstr='CUNIT1,CUNIT2,CRVAL1,CRVAL2,CDELT1,CDELT2,CRPIX1,CRPIX2,CTYPE1,CTYPE2,HGLN_OBS,HGLT_OBS,DSUN_OBS,RSUN_OBS,DATE-OBS,RSUN_REF,CRLN_OBS,CRLT_OBS,EXPTIME,INSTRUME,WAVELNTH,WAVEUNIT,TELESCOP,LVL_NUM,CROTA2'
+    if wlen in [1600,1700]:
+        qstr=f'aia.lev1_uv_24s[{date_obs_str}/1m@30s]'
+    else:
+        qstr=f'aia.lev1_euv_12s[{date_obs_str}/1m@30s]'
+    df = client.query(qstr, key=kstr)#'aia.lev1_euv_12s[2018.01.01_TAI/1d@12h] #'aia.lev1_euv_12s[2018.01.01_05:00:20/1m@30s]'
+    if df.empty: #event not in database yet or other error
+        observer=get_observer(date_obs,obs='Earth',sc=sc)
+        import warnings
+        warnings.warn(f"FITS headers for {date_obs} not available, using Earth observer" )
+    else:
+        try:
+            meta=df.where(df.WAVELNTH==wlen).dropna().iloc[0].to_dict()
+        except IndexError:
+            meta=df.iloc[0].to_dict()
+        if np.isnan(meta['CRPIX1']):
+            meta['CRPIX1']=0.
+        if np.isnan(meta['CRPIX2']):
+            meta['CRPIX2']=0.
+        fake_map=Map(np.zeros((10,10)),meta) #could probably do a faster way but this is convenient
+        observer=fake_map.coordinate_frame.observer
+    
+    if sc:
+        observer = SkyCoord(0*u.arcsec, 0*u.arcsec,obstime=date_obs,observer=observer,frame='helioprojective')
+
+    if wcs:
+        #while we're here and it's convenient...
+        if df.empty:
+            #wcs=get_wcs(date_obs, 'Earth')
+            wcs=observer[1]
+            observer=observer[0]
+        else:
+            wcs=WCS(meta)
+        return observer,wcs
+    return observer
+    
+def get_wcs(date_obs,obs_body,out_shape=(4096,4096),scale=None):
+    '''generalized way to get WCS'''
+    if isinstance(obs_body,str):
+        obs_body=get_observer(date_obs, obs=obs_body)
+    elif isinstance(obs_body,SkyCoord):
+        ref_coord=obs_body
+    else:
+        ref_coord = SkyCoord(0*u.arcsec,0*u.arcsec,obstime=date_obs,
+                              observer=obs_body,frame='helioprojective')
+                              
+    if scale:
+        scale=(1., 1.)*ref_coord.observer.radius/u.AU*u.arcsec/u.pixel
+    out_header = make_fitswcs_header(out_shape,ref_coord,scale=scale)
+    return WCS(out_header)
+
+
 #def get_observer(date_in,obs='Earth',wcs=True,sc=False,out_shape=(4096,4096)):
 #    '''Get observer information. Get WCS object if requested. Return Observer as SkyCoord at (0",0") if requested.'''
 #    hee = coordinates_body(date_in, obs)
