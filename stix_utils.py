@@ -528,3 +528,15 @@ def process_image_fits(infile):
     hdict['maxpix']=argmax2D(mm.data) #cross-check
     hdict['signal_to_noise']=np.nanmax(mm.data)/np.nanstd(mm.data)
     return hdict
+    
+def dicts2df(ff):
+    all_dicts=[]
+    noimage_files=[]
+    for f in ff:#[start:end]:
+        #print(f)
+        d=process_image_fits(f)
+        if d is not None:
+            all_dicts.append(d)
+        else:
+            noimage_files.append(f)
+    return pd.DataFrame(all_dicts),noimage_files
