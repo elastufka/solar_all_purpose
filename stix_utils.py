@@ -526,5 +526,5 @@ def process_image_fits(infile):
     hdict['hpc_x_arcsec']=hpj_cs[0].Tx.value
     hdict['hpc_y_arcsec']=hpj_cs[0].Ty.value
     hdict['maxpix']=argmax2D(mm.data) #cross-check
-    hdict['s2n']=np.nanmax(mm.data)/np.nanstd(mm.data)
+    hdict['signal_to_noise']=np.nanmax(mm.data)/np.nanstd(mm.data)
     return hdict
