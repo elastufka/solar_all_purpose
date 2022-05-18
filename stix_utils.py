@@ -521,12 +521,14 @@ def process_image_fits(infile):
     
     if np.nanmin(mm.data)==np.nanmax(mm.data)==np.nanmean(mm.data):
         return hdict
-        
-    cs,hpj_cs,_=find_centroid_from_map(mm) #do something to check that there is only 1 such contour...
-    hdict['hpc_x_arcsec']=hpj_cs[0].Tx.value
-    hdict['hpc_y_arcsec']=hpj_cs[0].Ty.value
-    hdict['maxpix']=argmax2D(mm.data) #cross-check
-    hdict['signal_to_noise']=np.nanmax(mm.data)/np.nanstd(mm.data)
+    try:
+        cs,hpj_cs,_=find_centroid_from_map(mm) #do something to check that there is only 1 such contour...
+        hdict['hpc_x_arcsec']=hpj_cs[0].Tx.value
+        hdict['hpc_y_arcsec']=hpj_cs[0].Ty.value
+        hdict['maxpix']=argmax2D(mm.data) #cross-check
+        hdict['signal_to_noise']=np.nanmax(mm.data)/np.nanstd(mm.data)
+    except IndexError: #no contour found
+        pass
     return hdict
     
 def dicts2df(ff):
