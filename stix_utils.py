@@ -12,7 +12,7 @@ from astropy.wcs import WCS
 from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord_to_pixel
 import rotate_coord as rc
 from spacecraft_utils import get_observer
-from rotate_maps import load_SPICE, coordinates_SOLO
+#from rotate_maps import load_SPICE, coordinates_SOLO
 from sunpy.map.maputils import solar_angular_radius
 import spiceypy
 import warnings
@@ -25,8 +25,8 @@ def spacecraft_to_earth_time(date_in,load_spice=False,solo_r=False):
     if type(date_in) != dt:
         date_in=pd.to_datetime(date_in)
     if load_spice:
-        load_SPICE(date_in,os.environ['SPICE'])
-    solo_hee,lighttime=coordinates_SOLO(date_in,light_time=True)
+        load_SOLO_SPICE(date_in,os.environ['SPICE'])
+    solo_hee,lighttime=coordinates_body(date_in,'SOLO',light_time=True)
     if solo_r: #also return this...
         stix_r=np.sqrt(solo_hee.x.to(u.AU).value**2+solo_hee.y.to(u.AU).value**2+solo_hee.z.to(u.AU).value**2)
         return date_in + td(seconds=lighttime), stix_r
@@ -98,15 +98,12 @@ def read_stix_images(im):
         mm=sunpy.map.Map(im)
     return(mm)
 
-def locations_over_time(start_date,end_date,fn=coordinates_SOLO,body=None,output_unit=u.AU):
+def locations_over_time(start_date,end_date,body='SOLO',output_unit=u.AU):
     '''return HEE locations of SOLO over given time period'''
     date_range=pd.date_range(start_date,end_date)
     hee=[]
     for d in date_range:
-        if body:
-            hee.append(coordinates_body(d,body))
-        else:
-            hee.append(fn(d))
+        hee.append(coordinates_body(d,body))
         
     xkm,ykm,zkm=[],[],[]
     #print(f"Units: HEE_x {hee[0].x.unit}, HEE_y {hee[0].y.unit}, HEE_z {hee[0].z.unit}")
@@ -238,7 +235,7 @@ def update_all_rotations(df,istart=False,istop=False,verbose=True, AIA=True, Bpr
     start_time=dt.now()
     #load spice kernels
     #print(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'))
-    load_SPICE(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'), os.environ['SPICE'])
+    load_SOLO_SPICE(dt.strftime(df.Datetime.iloc[-1],'%Y-%m-%dT%H:%M:%S'), os.environ['SPICE'])
     if AIA:
         hpc_x_rotated,hpc_y_rotated,hpc_lon_rotated,hpc_lat_rotated=[],[],[],[]
     if Bproj:
