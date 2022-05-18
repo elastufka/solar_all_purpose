@@ -19,6 +19,7 @@ import warnings
 from spiceypy.utils.exceptions import NotFoundError
 from sunpy_map_utils import add_arcsecs, find_centroid_from_map
 import re
+from flare_physics_utils import argmax2D
 #from rotate_maps_utils import rotate_hek_coords
 
 def spacecraft_to_earth_time(date_in,load_spice=False,solo_r=False):
