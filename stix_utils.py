@@ -509,10 +509,7 @@ def process_image_fits(infile):
     #elow,ehigh=[int(float(er)) for er in erange]
     mm=sunpy.map.Map(infile)
     if isinstance(mm,list):
-        for m in mm:
-            if 'CLEAN convolved' in m.meta['origin']:
-                mm=m
-                break
+        mm=mm[4] #last image is clean map        
                 
     hdict=mm.meta
     hdict['_id']=fid
