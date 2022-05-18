@@ -13,7 +13,7 @@ from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord
 import rotate_coord as rc
 from spacecraft_utils import get_observer
 #from rotate_maps import load_SPICE, coordinates_SOLO
-from sunpy.map.maputils import solar_angular_radius
+from sunpy.map.maputils import solar_angular_radius, find_centroid_from_map
 import spiceypy
 import warnings
 from spiceypy.utils.exceptions import NotFoundError
