@@ -13,11 +13,11 @@ from astropy.wcs.utils import wcs_to_celestial_frame,pixel_to_skycoord, skycoord
 import rotate_coord as rc
 from spacecraft_utils import get_observer
 #from rotate_maps import load_SPICE, coordinates_SOLO
-from sunpy.map.maputils import solar_angular_radius, find_centroid_from_map
+from sunpy.map.maputils import solar_angular_radius
 import spiceypy
 import warnings
 from spiceypy.utils.exceptions import NotFoundError
-from sunpy_map_utils import add_arcsecs
+from sunpy_map_utils import add_arcsecs, find_centroid_from_map
 import re
 #from rotate_maps_utils import rotate_hek_coords
 
