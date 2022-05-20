@@ -173,3 +173,12 @@ def locations_on_disk(xloc,yloc,solrad=None, deg=False,percent=False,msizes=None
     fig.update_xaxes(range=[-1*axbounds,axbounds],showgrid=False,zeroline=False)
     fig.update_yaxes(range=[-1*axbounds,axbounds],scaleanchor='x',scaleratio=1,showgrid=False)
     return fig
+
+def dropdown_widget(og_plot,response,options=['BackProjection','ForwardFit','CLEAN','EM'],option_description='Method'):
+    method=widgets.Dropdown(options=options,value=options[0],description=option_description,disabled=False)
+
+    g=go.FigureWidget(data=og_plot.data,layout=og_plot.layout)
+
+    method.observe(response,names="value")
+    container = widgets.HBox([method])
+    return widgets.VBox([container,g])
