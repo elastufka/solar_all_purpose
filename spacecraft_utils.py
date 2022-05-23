@@ -3,7 +3,7 @@ import numpy as np
 import os
 import glob
 
-from astropy import units as u
+from astropy import units as u, constants as const
 from datetime import datetime as dt
 from datetime import timedelta as td
 import sunpy
@@ -13,7 +13,6 @@ from astropy.time import Time
 from sunpy.coordinates import Helioprojective
 from sunpy.coordinates.frames import HeliocentricEarthEcliptic, HeliographicStonyhurst
 from sunpy.map.maputils import _verify_coordinate_helioprojective
-from astropy.time import Time
 from sunpy.map import Map, make_fitswcs_header
 import drms
 import spiceypy
@@ -58,7 +57,22 @@ def get_spacecraft_position(start_date,end_date,spacecraft='SPP', path_kernel="/
         return times,sc_r.value,sc_lat.value,sc_lon.value
     else:
         return times,sc.x.value,sc.y.value,sc.z.value
- 
+
+def estimate_lighttime(hee_x,hee_y,hee_z=None):
+    """Given position of spacecraft or body, estimate the light travel time between it and the Sun"""
+    if not heez:
+        robs=np.sqrt(hee_x**2 + hee_y**2)
+    else:
+        robs=np.sqrt(hee_x**2 + hee_y**2 + hee_z**2)
+    return robs.to_(u.m)/const.c #astropy Quantity
+    
+def correct_lighttime(time_in,light_travel_time,AU=True):
+    """Correct a given datetime for light travel time, assuming a distance of 1AU"""
+    if AU:
+        ltAU=(1*u.AU).to(u.m)/const.c
+    tdelt=ltAU-light_travel_time #seconds, can also be negative
+    return time_in + td(seconds=tdelt.value)
+
 def coordinates_body(date_body,body_name,light_time=False):
     """
     Load the kernel needed in order to derive the

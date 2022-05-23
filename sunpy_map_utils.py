@@ -107,6 +107,13 @@ def add_arcsecs():
     ar=u.def_unit("arcsecs",1*u.arcsec)
     u.add_enabled_units([ar])
     
+def hglt_to_hee(hgln_deg,hglt_deg,obstime):
+    """Transform Heligraphic Stonyhurst coordinates to Heliocentric Earth Ecliptic (cartesian) coordinates"""
+    sc0=SkyCoord(hgln_deg*u.deg,hglt_deg*u.deg,frame='heliographic_stonyhurst',obstime=obstime)
+    sc1=sc0.transform_to(frame='heliocentricearthecliptic')
+    sc1.representation_type='cartesian'
+    return sc1
+    
 def transform_observer(mcutout,sobs,swcs,scale=None):
    #deal with off-disk... if there are off-disk pixels in input, only consider on-disk
     #refcoord=SkyCoord(0,0,unit=u.arcsec,frame=sobs.frame)#='helioprojective',observer=sobs,obstime=sobs.obstime)
