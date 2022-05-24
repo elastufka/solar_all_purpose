@@ -4,6 +4,7 @@ import os
 import glob
 
 from astropy import units as u, constants as const
+from astropy.coordinates import SkyCoord
 from datetime import datetime as dt
 from datetime import timedelta as td
 import sunpy
