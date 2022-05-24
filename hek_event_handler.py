@@ -7,7 +7,7 @@ import os
 
 from datetime import timedelta as td
 import sunpy.net as sn
-from spacecraft_utils import get_observer, is_visible_from
+from spacecraft_utils import get_observer
 from rotate_coord import rotate_coord
 from stix_utils import spacecraft_to_earth_time #(date_in,load_spice=False)
 
@@ -51,15 +51,18 @@ class HEKEventHandler():
         if self.small_df:
             df=df[['hpc_x','hpc_y','hpc_bbox','frm_identifier','frm_name','fl_goescls','fl_peaktempunit','fl_peakemunit','fl_peakflux','event_peaktime','fl_peakfluxunit','fl_peakem','fl_peaktemp','obs_dataprepurl','gs_imageurl','gs_thumburl']]
             df.drop_duplicates(inplace=True)
-        if self.single_result: #select one
-            aa=df.where(df.frm_identifier == 'Feature Finding Team').dropna()
+        if self.single_result: #select one with closest time...
+            df['event_peaktime']=pd.to_datetime(df.event_peaktime)
+            df['timedelta_abs']=np.abs(df['event_peaktime']-self.date_obs)
+            df=df.sort_values(by='timedelta_abs')
+            #aa=df.where(df.frm_identifier == 'Feature Finding Team').dropna()
             #print(aa.index.values)
-            if len(aa.index.values) == 1: #yay
-                return aa
-            elif len(aa.index.values) > 1:
-                return pd.DataFrame(aa.iloc[0]).T
-            elif aa.empty: #whoops, just take the first one then
-                return pd.DataFrame(df.iloc[0]).T
+            #if len(aa.index.values) == 1: #yay
+            #    return aa
+            #elif len(aa.index.values) > 1:
+            #    return pd.DataFrame(aa.iloc[0]).T
+            #elif aa.empty: #whoops, just take the first one then
+            return pd.DataFrame(df.iloc[0]).T
 
         df['movie_url']=[r.gs_imageurl[:r.gs_imageurl.rfind('/')+1] if type(r.gs_imageurl) == str else None for i,r in df.iterrows()]
         return df
@@ -83,10 +86,10 @@ class HEKEventHandler():
             'x_deg', 'y_deg', 'rsun_apparent', 'x_px', 'y_px', 'rotated_x_arcsec',
             'rotated_y_arcsec', 'rotated_lon_deg', 'rotated_lat_deg',
             'rotated_x_px', 'rotated_y_px']]
-            try:
-                rdf['visible_from_SOLO']=is_visible_from(self.date_obs, (row.hpc_x,row.hpc_y))
-            except Exception as e:
-                rdf['visible_from_SOLO']='Unknown'
+            if rdf['rotated_x_arcsec'] is not None and rdf['rotated_y_arcsec'] is not None:
+                rdf['visible_from_SOLO']=True
+            else:
+                rdf['visible_from_SOLO']=False
             dfs.append(rdf)
 
         hdf=pd.concat(dfs)
