@@ -183,7 +183,7 @@ def get_wcs(date_obs,obs_body,out_shape=(4096,4096),scale=None):
     out_header = make_fitswcs_header(out_shape,ref_coord,scale=scale)
     return WCS(out_header)
 
-def is_visible_from(date_obs: dt, flare_loc: tuple, obs_in = 'SOLO': str, obs_out = 'Earth': str) -> bool:
+def is_visible_from(date_obs: dt, flare_loc: tuple, obs_in = 'Earth', obs_out = 'SOLO') -> bool:
     '''Given a flare location seen by one observer, is it visible from a second observer? '''
     
     obs_in_hee = coordinates_body(date_obs, obs_in)
