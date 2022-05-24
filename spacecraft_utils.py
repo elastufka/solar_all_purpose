@@ -19,6 +19,7 @@ import spiceypy
 #import warnings
 #from spiceypy.utils.exceptions import NotFoundError
 #from rotate_maps_utils import rotate_hek_coords
+from sunpy_map_utils import coordinate_behind_limb
 import heliopy.data.spice as spicedata
 import heliopy.spice as hespice
 
@@ -182,6 +183,31 @@ def get_wcs(date_obs,obs_body,out_shape=(4096,4096),scale=None):
     out_header = make_fitswcs_header(out_shape,ref_coord,scale=scale)
     return WCS(out_header)
 
+def is_visible_from(date_obs: dt, flare_loc: tuple, obs_in = 'SOLO': str, obs_out = 'Earth': str) -> bool:
+    '''Given a flare location seen by one observer, is it visible from a second observer? '''
+    
+    obs_in_hee = coordinates_body(date_obs, obs_in)
+    obs_out_hee = coordinates_body(date_obs, obs_out)
+
+    obs_flare_coord = SkyCoord(flare_loc[0]*u.arcsec,
+                              flare_loc[1]*u.arcsec,
+                              obstime=date_obs,
+                              observer=obs_in,
+                              frame='helioprojective')
+
+    obs_out_ref_coord = SkyCoord(0*u.arcsec,
+                               0*u.arcsec,
+                               obstime=date_obs,
+                               observer=obs_out_hee.transform_to(HeliographicStonyhurst(obstime=date_obs)),
+                               frame='helioprojective')
+                               
+    obs_out_flare_coord= obs_flare_coord.transform_to(obs_out_ref_coord.frame)
+
+    #is obs_out_flare_coord on the solar disk?
+    if not coordinate_behind_limb(obs_out_flare_coord, pov=obs_out_hee):
+        return obs_out_flare_coord
+    else:
+        raise ValueError(f"The input coordinate {obs_flare_coord} is behind the limb from the view of {obs_out}.")
 
 #def get_observer(date_in,obs='Earth',wcs=True,sc=False,out_shape=(4096,4096)):
 #    '''Get observer information. Get WCS object if requested. Return Observer as SkyCoord at (0",0") if requested.'''

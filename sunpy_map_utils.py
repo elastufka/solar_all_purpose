@@ -22,14 +22,15 @@ import matplotlib
 from matplotlib import cm
 import pidly
 from sunpy.physics.differential_rotation import solar_rotate_coordinate#, diffrot_map
-from sunpy.map.maputils import solar_angular_radius
+from sunpy.coordinates.frames import HeliocentricEarthEcliptic, HeliographicStonyhurst
+from sunpy.map.maputils import solar_angular_radius, _verify_coordinate_helioprojective
 from skimage.transform import downscale_local_mean
 from scipy.ndimage import sobel
 from skimage.measure import find_contours
 import pickle
 import cmath
 from flare_physics_utils import cartesian_diff
-from spacecraft_utils import get_observer
+from spacecraft_utils import get_observer, coordinates_body
 
 def query_fido(time_int, wave, series='aia_lev1_euv_12s',instrument=False, cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False,single_result=True):
     '''query VSO database for data and download it. Cutout coords will be converted to SkyCoords if not already in those units. For cutout need sunpy 3.0+
@@ -113,6 +114,23 @@ def hglt_to_hee(hgln_deg,hglt_deg,obstime):
     sc1=sc0.transform_to(frame='heliocentricearthecliptic')
     sc1.representation_type='cartesian'
     return sc1
+    
+def coordinate_behind_limb(coord: SkyCoord, pov=None) -> bool:
+    '''Check if coordinate is behind the limb as seen by the desired observer. Do this by:
+    - converting input coordinate to HGS
+    - getting observer (pov) HGS (assume this gives center of frame)
+    - check if input HGS is within observer HGS +- 90 degrees longitude '''
+    _verify_coordinate_helioprojective(coord)
+    if not pov:
+        pov = coordinates_body(coord.obstime.to_datetime(),'Earth') #HEE
+    #limb is at longitude +- 90 generally. slightly latitude dependent but going to ignore that here
+    coord_hgs=coord.transform_to(HeliographicStonyhurst)
+    pov_hgs=pov.transform_to(HeliographicStonyhurst(obstime=coord.obstime)) #lon gives center of frame I think
+    #do r not lon!!
+    if coord_hgs.lon.value > pov_hgs.lon.value -90 and coord_hgs.lon.value < pov_hgs.lon.value + 90: #"on disk" as seen by POV
+        return False
+    else:
+        return True
     
 def transform_observer(mcutout,sobs,swcs,scale=None):
    #deal with off-disk... if there are off-disk pixels in input, only consider on-disk

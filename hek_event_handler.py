@@ -7,12 +7,12 @@ import os
 
 from datetime import timedelta as td
 import sunpy.net as sn
-from visible_from_earth import get_observer, is_visible_from_SO
+from spacecraft_utils import get_observer, is_visible_from
 from rotate_coord import rotate_coord
 from stix_utils import spacecraft_to_earth_time #(date_in,load_spice=False)
 
 class HEKEventHandler():
-    def __init__(self, date_obs,obs_out='SO', event_type='FL',obs_instrument='AIA',small_df=True,single_result=False, search_int=td(minutes=5),light_time_corrected=False):
+    def __init__(self, date_obs,obs_out='SO', event_type='FL',obs_instrument='AIA',small_df=True,single_result=False, search_int=td(minutes=5),rotate_coords=True,hee_in=False,hee_out=False):
         for k,v in locals().items():
             if k != 'self':
                 setattr(self,k,v)
@@ -23,7 +23,7 @@ class HEKEventHandler():
             
         self.time_int=[self.date_obs-self.search_int,self.date_obs+self.search_int]
         df=self.query_hek()
-        if not df.empty:
+        if not df.empty and rotate_coords:
             #print("df is not empty")
             self.get_observers_and_wcs()
             df=self.rotate_hek_coords(df)
@@ -32,11 +32,11 @@ class HEKEventHandler():
         
     def get_observers_and_wcs(self):
         ''' what it sounds like - for use in rotations'''
-        self.observer_in,self.wcs_in=get_observer(self.date_obs,obs=self.obs_instrument)
-        try:
-            self.observer_out,self.wcs_out=get_observer(self.date_obs_corrected,obs=self.obs_out) #assuming obs_out is SO... can control for this later
-        except AttributeError:
-            self.observer_out,self.wcs_out=get_observer(self.date_obs,obs=self.obs_out)
+        self.observer_in,self.wcs_in=get_observer(self.date_obs,obs=self.obs_instrument,hee=self.hee_in)
+#        try:
+#            self.observer_out,self.wcs_out=get_observer(self.date_obs_corrected,obs=self.obs_out,hee=self.hee_out) #assuming obs_out is SO... can control for this later
+#        except AttributeError:
+        self.observer_out,self.wcs_out=get_observer(self.date_obs,obs=self.obs_out,hee=self.hee_out)
     
     def query_hek(self):
         time = sn.attrs.Time(self.time_int[0],self.time_int[1])
@@ -83,7 +83,7 @@ class HEKEventHandler():
             'x_deg', 'y_deg', 'rsun_apparent', 'x_px', 'y_px', 'rotated_x_arcsec',
             'rotated_y_arcsec', 'rotated_lon_deg', 'rotated_lat_deg',
             'rotated_x_px', 'rotated_y_px']]
-            rdf['visible_from_SOLO']=is_visible_from_SO(self.date_obs, (row.hpc_x,row.hpc_y))
+            rdf['visible_from_SOLO']=is_visible_from(self.date_obs, (row.hpc_x,row.hpc_y))
             dfs.append(rdf)
 
         hdf=pd.concat(dfs)
