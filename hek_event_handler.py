@@ -83,7 +83,10 @@ class HEKEventHandler():
             'x_deg', 'y_deg', 'rsun_apparent', 'x_px', 'y_px', 'rotated_x_arcsec',
             'rotated_y_arcsec', 'rotated_lon_deg', 'rotated_lat_deg',
             'rotated_x_px', 'rotated_y_px']]
-            rdf['visible_from_SOLO']=is_visible_from(self.date_obs, (row.hpc_x,row.hpc_y))
+            try:
+                rdf['visible_from_SOLO']=is_visible_from(self.date_obs, (row.hpc_x,row.hpc_y))
+            except Exception as e:
+                rdf['visible_from_SOLO']='Unknown'
             dfs.append(rdf)
 
         hdf=pd.concat(dfs)
