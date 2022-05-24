@@ -19,7 +19,7 @@ import spiceypy
 #import warnings
 #from spiceypy.utils.exceptions import NotFoundError
 #from rotate_maps_utils import rotate_hek_coords
-from sunpy_map_utils import coordinate_behind_limb
+#from sunpy_map_utils import coordinate_behind_limb
 import heliopy.data.spice as spicedata
 import heliopy.spice as hespice
 
