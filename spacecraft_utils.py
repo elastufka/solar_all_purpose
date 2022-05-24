@@ -182,6 +182,24 @@ def get_wcs(date_obs,obs_body,out_shape=(4096,4096),scale=None):
         scale=(1., 1.)*ref_coord.observer.radius/u.AU*u.arcsec/u.pixel
     out_header = make_fitswcs_header(out_shape,ref_coord,scale=scale)
     return WCS(out_header)
+    
+def coordinate_behind_limb(coord: SkyCoord, pov=None) -> bool:
+    '''Check if coordinate is behind the limb as seen by the desired observer. Do this by:
+    - converting input coordinate to HGS
+    - getting observer (pov) HGS (assume this gives center of frame)
+    - check if input HGS is within observer HGS +- 90 degrees longitude '''
+    _verify_coordinate_helioprojective(coord)
+    if not pov:
+        pov = coordinates_body(coord.obstime.to_datetime(),'Earth') #HEE
+    #limb is at longitude +- 90 generally. slightly latitude dependent but going to ignore that here
+    coord_hgs=coord.transform_to(HeliographicStonyhurst)
+    pov_hgs=pov.transform_to(HeliographicStonyhurst(obstime=coord.obstime)) #lon gives center of frame I think
+    #do r not lon!!
+    if coord_hgs.lon.value > pov_hgs.lon.value -90 and coord_hgs.lon.value < pov_hgs.lon.value + 90: #"on disk" as seen by POV
+        return False
+    else:
+        return True
+
 
 def is_visible_from(date_obs: dt, flare_loc: tuple, obs_in = 'Earth', obs_out = 'SOLO') -> bool:
     '''Given a flare location seen by one observer, is it visible from a second observer? '''
