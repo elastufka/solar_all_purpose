@@ -171,6 +171,12 @@ def smart_reproject(mcutout,observatory='Solar Orbiter',scale=None):
 
 def rotate_all_coords(mcutout,frame):
     return sunpy.map.all_coordinates_from_map(mcutout).transform_to(frame)
+    
+def print_arr_stats(arr, ignore_nan=False):
+    if ignore_nan:
+        print(f"Mean: {np.nanmean(arr)}\nMin: {np.nanmin(arr)}\nMax: {np.nanmax(arr)}\nStd: {np.nanstd(arr)}\n")
+    else:
+        print(f"Mean: {np.mean(arr)}\nMin: {np.min(arr)}\nMax: {np.max(arr)}\nStd: {np.std(arr)}\n")
 
 def rotated_bounds_on_disk(smap,frame):
     '''use this to determine extent of rotated shape in case bottom left and top right don't work out...'''

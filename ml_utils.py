@@ -14,6 +14,9 @@ import plotly.express as px
 
 from sklearn import metrics
 
+def normalize_minus1_plus1(arr):
+    return 2.*(arr-np.min(arr))/np.ptp(arr)-1
+
 ### GMM ###
 
 def run_gmm(nc,data,covariance_type='full',random_state=2): #should really be **kwargs
