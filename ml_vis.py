@@ -72,3 +72,19 @@ def train_val_tf(history,train_key='loss',valkey='val_loss'):
     ax.set_xlabel('epoch')
     ax.legend(['train', 'valid'], loc='upper left')
     return fig
+
+def kmeans_examples(data,clusters,ncluster=0,imshape=(256,256),nexamples=10):
+    """Plot examples from each kmeans cluster. specifically for images but can probably work otherwise as well"""
+    _,cluster_counts=np.unique(clusters, return_counts=True)
+    n_clusters=len(cluster_counts)
+    cluster_dict={f"cluster_{i}":list([j.reshape(imshape) for k,j in enumerate(data) if clusters[k]==i]) for i in range(n_clusters)}
+    fig,ax=plt.subplots(nexamples,nexamples,figsize=(8,8))
+    rng=np.random.default_rng()
+    samples=rng.choice(cluster_counts[ncluster],size=nexamples*nexamples,replace=False) #no duplicates
+    for x in ax:
+        for y in x:
+            y.imshow(cluster_dict[f"cluster_{ncluster}"][samples[i]],cmap=cm.gray)
+            y.axis('off')
+            i+=1
+    fig.suptitle(f"Cluster {ncluster}")
+    return fig

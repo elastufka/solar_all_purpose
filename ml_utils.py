@@ -60,3 +60,17 @@ def gmm_notruth_score(nc, df):
     return sdf
 
 ### get all those Xgboost ones and put them here, put the plots elsewhere ###s
+
+
+def print_arr_stats(arr, ignore_nan=False):
+    if ignore_nan:
+        print(f"Mean: {np.nanmean(arr)}\nMin: {np.nanmin(arr)}\nMax: {np.nanmax(arr)}\nStd: {np.nanstd(arr)}\n")
+    else:
+        print(f"Mean: {np.mean(arr)}\nMin: {np.min(arr)}\nMax: {np.max(arr)}\nStd: {np.std(arr)}\n")
+
+def scale_minus1_plus1(arr,elementwise=False):
+    """scale an array to [-1,+1]. elementwise (axis 0) if desired """
+    if not elementwise:
+        return 2*(arr-np.min(arr))/np.ptp(arr)-1
+    else:
+        return np.array([2*(a-np.min(a))/np.ptp(a)-1 for a in arr])
