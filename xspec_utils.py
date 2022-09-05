@@ -13,11 +13,12 @@ from astropy.table import Table
 def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fitsname=None):
     """write average count rate over selected time interval to new fitsfile for fitting with XSPEC"""
     reference_fits = fits.open(original_fitsfile)
-    primary_header = reference_fits[0].header.copy()
+    primary_HDU = reference_fits[0] #header = reference_fits[0].header.copy()
     rate_header = reference_fits[1].header.copy()
-    energy_header = reference_fits[2].header.copy()
+    #energy_header = reference_fits[2].header.copy()
     rate_data = reference_fits[1].data.copy()
-    energy_data = reference_fits[2].data.copy()
+    #energy_data = reference_fits[2].data.copy()
+    energy_HDU = reference_fits[2]
     nchan = len(rate_data['CHANNEL'][0])
 
     #time axis
@@ -33,7 +34,7 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     tend = Time(end_time)
     tselect = np.where(np.logical_and(time_bin_center >= tstart.mjd,time_bin_center < tend.mjd)) #boolean mask
     #ttimes = time_bin_center[tselect] #actual times
-
+    print(f"tselect {tselect[0][0]} {tselect[0][-1]}")
     #rate data
     total_counts = np.array([np.sum(rate_data['RATE'][tselect],axis=0)]).reshape((1,nchan))
     print(f"max counts: {np.max(total_counts)}")
@@ -46,12 +47,14 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     
     # Update keywords that need updating
     #rate_header['DETCHANS'] = self.n_energies
-    rate_header['NAXIS'] = 1
-    rate_header['NAXIS1'] = 1
+    rate_header.set('NAXIS',1)
+    rate_header.set('NAXIS1', 1)
+    del rate_header['NAXIS2']
     
-    exposure =  np.sum(rate_data['TIMEDEL'][tselect]*rate_data['LIVETIME'][tselect])
+    exposure =  np.sum(rate_data['TIMEDEL'][tselect[0]]*rate_data['LIVETIME'][tselect[0]])
     rate_header['EXPOSURE'] = exposure
     rate_header['ONTIME'] = exposure
+    print(f"exposure: {exposure}")
     #update times in rate header
     rate_header['TSTARTI'] = int(np.modf(tstart.mjd)[1]) #Integer portion of start time rel to TIMESYS
     rate_header['TSTARTF'] = np.modf(tstart.mjd)[0] #Fractional portion of start time
@@ -63,9 +66,10 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     rate_names = ['RATE', 'STAT_ERR', 'CHANNEL', 'SPEC_NUM', 'LIVETIME', 'TIME', 'TIMEDEL']
     rate_table = Table([(total_counts/exposure).astype('>f8'), avg_err.astype('>f8'), rate_data['CHANNEL'][0].reshape((1,nchan)), [0],avg_livetime.astype('>f8'), np.array([rate_data['TIME'][tselect[0][0]]]), np.array([np.sum(rate_data['TIMEDEL'][tselect])])], names = rate_names) #is spec.counts what we want?
 
-    primary_HDU = fits.PrimaryHDU(header = primary_header)
+    #primary_HDU = fits.PrimaryHDU(header = primary_header)
     rate_HDU = fits.BinTableHDU(header = rate_header, data = rate_table)
-    energy_HDU = fits.BinTableHDU(header = energy_header, data = energy_data)
+    #energy_HDU = fits.BinTableHDU(header = energy_header, data = energy_data)
+    #print(energy_HDU.header)
     hdul = fits.HDUList([primary_HDU, rate_HDU, energy_HDU]) #, att_header, att_table])
     if not out_fitsname:
         out_fitsname=f"{original_fitsfile[:-5]}_{pd.to_datetime(start_time):%H%M%S}-{pd.to_datetime(end_time):%H%M%S}.fits"
@@ -325,11 +329,14 @@ def plot_fit(xspec, model, fitrange=False, dataGroup=1,erange=False,yrange = [-3
     fig = make_subplots(rows=2, cols=1, start_cell="top-left",shared_xaxes=True,row_heights=[.6,.3],vertical_spacing=.05)
     fig.add_trace(go.Scatter(x=xx,y=yy,mode='markers',name='data',error_y=dict(type='data',array=yErr)),row=1,col=1)
     for m, model_name in zip(model_comps,cnames):
-        fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_shape = 'hv'),row=1,col=1)
+        if '+' in model_name: #match color to residuals
+            fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_color = 'black', line_shape = 'hv'),row=1,col=1)
+        else:
+            fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_shape = 'hv'),row=1,col=1)
 
     #plot residuals
-    fig.update_yaxes(type='log',row=1,col=1,showexponent = 'all',exponentformat = 'e',range=yrange)
-    fig.add_trace(go.Scatter(x=xx,y=res,mode = 'lines+markers',marker_color='brown',name='residuals',line_shape = 'hv'),row=2,col=1)
+    fig.update_yaxes(type='log',row=1,col=1,showexponent = 'all',exponentformat = 'e',range=yrange, title = 'Count Rate')
+    fig.add_trace(go.Scatter(x=xx,y=res,mode = 'lines+markers',marker_color='black',name='residuals',line_shape = 'hv'),row=2,col=1)
     fig.add_vrect(x0=fitrange[0],x1=fitrange[1],annotation_text='fit range',fillcolor='lightgreen',opacity=.25,line_width=0,row=1,col=1)
     fig.add_vrect(x0=fitrange[0],x1=fitrange[1],fillcolor='lightgreen',opacity=.25,line_width=0,row=2,col=1)
     if annotation:
@@ -346,23 +353,25 @@ def plot_fit(xspec, model, fitrange=False, dataGroup=1,erange=False,yrange = [-3
         return fig, plotdata
     return fig
     
-def annotate_plot(model,norm=False):
+def annotate_plot(model, last_component=False, exclude_parameters = ['norm'], error = False):
     '''annotations for plot - parameters and confidence intervals if they can be calculated
     Input: xspec Model object
     Output: HTML-formatted string'''
-    fittext=""
-    for comp in model.componentNames:
-        mc=getattr(model,comp)
+    fittext = ""
+    if not last_component:
+        cnames = model.componentNames[:-1]
+    for comp in cnames:
+        mc = getattr(model,comp)
         for par in getattr(mc,"parameterNames"):
-            if par != 'norm':
-                p=getattr(mc,par)
-                val=p.values[0]
-                fmt=".2e"
+            if par not in exclude_parameters:
+                p = getattr(mc,par)
+                val = p.values[0]
+                fmt = ".2e"
                 if np.abs(np.log10(val)) < 2:
-                    fmt=".2f"
-                if p.error[2] == "FFFFFFFFF": #error calculated sucessfully
-                    errs=f"({p.error[0]:{fmt}}-{p.error[1]:{fmt}})"
+                    fmt = ".2f"
+                if p.error[2] == "FFFFFFFFF" and error: #error calculated sucessfully
+                    errs = f"({p.error[0]:{fmt}}-{p.error[1]:{fmt}})"
                 else:
-                    errs=""
-                fittext +=f"{par}: {val:{fmt}} {errs} {p.unit}<br>"
+                 errs = f"±{p.sigma:{fmt}}"#""
+                fittext += f"{par}: {val:{fmt}} {errs} {p.unit}<br>"
     return fittext

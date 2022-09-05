@@ -5,6 +5,8 @@ import glob
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from astropy.io import fits
+from astropy.time import Time
 from datetime import datetime as dt
 from datetime import timedelta as td
 import sunpy
@@ -20,6 +22,7 @@ from spiceypy.utils.exceptions import NotFoundError
 from sunpy_map_utils import add_arcsecs, find_centroid_from_map
 import re
 from flare_physics_utils import argmax2D
+import plotly.graph_objects as go
 #from rotate_maps_utils import rotate_hek_coords
 
 def spacecraft_to_earth_time(date_in,load_spice=False,solo_r=False):
@@ -539,3 +542,99 @@ def dicts2df(ff):
         else:
             noimage_files.append(f)
     return pd.DataFrame(all_dicts),noimage_files
+
+def correct_spectrogram_time(spec):
+    """Change time in STIX spectrogram object to actual times instead of seconds since"""
+    return [pd.to_datetime(spec.T0_utc)+td(seconds=t) for t in spec.time]
+
+def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC'):
+    """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
+    spec = fits.open(filename)
+    rate=spec[1].data['RATE']
+    spectime=spec[1].data['TIME']
+    emin=list(spec[2].data['E_MIN'])
+    emax=list(spec[2].data['E_MAX'])
+    spec.close()
+    
+    tt=Time(spectime, format = 'mjd')
+    ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
+    plot_rate = rate.T
+    cbar_title = "Count Rate"
+    plot_time = tt
+    
+    if log:
+        plot_rate = np.log10(plot_rate)
+        plot_rate[np.isnan(plot_rate)] = np.nanmin(plot_rate)
+        
+    #print(plot_rate.shape)
+    if time_int: #format HH:MM
+        idx_start = tt[0]
+        idx_end = tt[-1]
+        plot_rate = plot_rate[:,idx_start:idx_end]
+        plot_time = plot_time[idx_start:idx_end]
+        
+    if idx_int:
+        idx_start, idx_end = idx_int
+        plot_rate = plot_rate[:,idx_start:idx_end]
+        plot_time = plot_time[idx_start:idx_end]
+        
+    fig = go.Figure()
+    if mode.lower() == 'heatmap':
+        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title,xaxis='x1'))
+        fig.update_yaxes(dict(title='Energy Bin (keV)',tickmode='array',ticktext=ylabels,tickvals=np.arange(len(ylabels))))
+    elif mode.lower() == 'scatter':
+        emin.append(emax[-1])
+        if binning == 'SDC':
+            bins = [(4,10),(10,15),(15,25),(25,50)] #keV
+            bin_idx = [[emin.index(l),emin.index(h)] for l,h in bins]
+        elif isinstance(binning, list): #bins are a list of tuples
+            bins = binning
+            bin_idx = [[emin.index(l),emin.index(h)] for l,h in bins]
+        else: # no binning
+            bins = [[l,h] for l,h in zip(emin,emax)]
+            bin_idx = [[emin.index(l),emin.index(h)] for l,h in zip(emin,emax)]
+        
+        for bi,b in zip(bin_idx,bins):
+            fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0),xaxis='x1',mode='lines',name=f"{b[0]:.0f}-{b[1]:.0f} keV"))
+            fig.update_yaxes(dict(title='Count Rate'))
+    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval),ticktext=np.arange(1,(plot_rate.size+1)/tickinterval),tickangle=360,overlaying='x',side='top'))
+    fig.update_layout(title=f"Spectrogram {plot_time[0].datetime:%Y-%m-%d %H:%M:%S}")
+    return fig
+    
+def plot_stix_livetime(filename, log=False, tickinterval = 100, time_int = None, idx_int = None):
+    """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
+    spec = fits.open(filename)
+    ltime=spec[1].data['LIVETIME']
+    spectime=spec[1].data['TIME']
+    emin=spec[2].data['E_MIN']
+    emax=spec[2].data['E_MAX']
+    spec.close()
+    
+    tt=Time(spectime, format = 'mjd')
+    ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
+    plot_rate = ltime.T
+    plot_time = tt
+    
+    if log:
+        plot_rate = np.log10(plot_rate)
+        plot_rate[np.isnan(plot_rate)] = np.nanmin(plot_rate)
+        
+    print(plot_rate.shape)
+    if time_int: #format HH:MM
+        idx_start = tt[0]
+        idx_end = tt[-1]
+        plot_rate = plot_rate[idx_start:idx_end]
+        plot_time = plot_time[idx_start:idx_end]
+        
+    if idx_int:
+        idx_start, idx_end = idx_int
+        plot_rate = plot_rate[idx_start:idx_end]
+        plot_time = plot_time[idx_start:idx_end]
+        
+    fig = go.Figure()
+    #fig.add_trace(go.Heatmap(x=np.arange(rate.size),z=rate.T,xaxis='x2',showlegend=False,showscale=False))
+    fig.add_trace(go.Scatter(x=plot_time.isot,y=plot_rate,xaxis='x1'))
+    fig.update_yaxes(dict(title='Livetime Fraction'))
+    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval),ticktext=np.arange(1,(plot_rate.size+1)/tickinterval),tickangle=360,overlaying='x',side='top'))
+    fig.update_layout(title=f"Spectrogram {plot_time[0].datetime:%Y-%m-%d %H:%M:%S}")
+    return fig

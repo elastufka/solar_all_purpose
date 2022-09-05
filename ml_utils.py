@@ -64,9 +64,10 @@ def gmm_notruth_score(nc, df):
 
 def print_arr_stats(arr, ignore_nan=False):
     if ignore_nan:
-        print(f"Mean: {np.nanmean(arr)}\nMin: {np.nanmin(arr)}\nMax: {np.nanmax(arr)}\nStd: {np.nanstd(arr)}\n")
+        arr[np.isinf(arr)] = np.nan
+        print(f"Shape: {arr.shape}\nMean: {np.nanmean(arr)}\nMin: {np.nanmin(arr)}\nMax: {np.nanmax(arr)}\nStd: {np.nanstd(arr)}\n")
     else:
-        print(f"Mean: {np.mean(arr)}\nMin: {np.min(arr)}\nMax: {np.max(arr)}\nStd: {np.std(arr)}\n")
+        print(f"Shape: {arr.shape}\nMean: {np.mean(arr)}\nMin: {np.min(arr)}\nMax: {np.max(arr)}\nStd: {np.std(arr)}\n")
 
 def scale_minus1_plus1(arr,elementwise=False):
     """scale an array to [-1,+1]. elementwise (axis 0) if desired """
