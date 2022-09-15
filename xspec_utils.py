@@ -153,7 +153,7 @@ def fit_thermal_nonthermal(xspec, ntmodel = 'bknpower', lowErange = [2.0,10.0], 
     xspec.Fit.perform()
     print(f"Fit statistic: {xspec.Fit.statMethod.capitalize()}   {xspec.Fit.statistic:.3f} \n Null hypothesis probability of {xspec.Fit.nullhyp:.2e} with {xspec.Fit.dof} degrees of freedom")
     xspec.AllData.notice('all')
-    return m
+    return m, xspec.Fit.statistic
 
 
 def get_xspec_model_params(model_component, norm=False):
@@ -245,7 +245,7 @@ def show_statistic(fit):
     '''input xspec.Fit'''
     return Markdown(f"Fit statistic: {fit.statMethod.capitalize()}   {fit.statistic:.3f} \n Null hypothesis probability of {fit.nullhyp:.2e} with {fit.dof} degrees of freedom")
 
-def plot_data(xspec,fitrange=False, dataGroup=1,erange=False, counts=False, title = None):
+def plot_data(xspec,fitrange=False, dataGroup=1,erange=False,yrange=False, counts=False, title = None):
     '''plot data in PlotLy. Input: xspec global object '''
 
     xspec.Plot.xAxis = "keV"
@@ -254,11 +254,13 @@ def plot_data(xspec,fitrange=False, dataGroup=1,erange=False, counts=False, titl
     if not counts: #plot count rate
         xspec.Plot('data')
         ytitle='Counts/s'
-        yrange=[-2,4.5]
+        if not yrange:
+            yrange=[-2,4.5]
     else:
         xspec.Plot('counts')
         ytitle='Counts'
-        yrange=[1,1e6]
+        if not yrange:
+            yrange=[1,1e6]
     xx = xspec.Plot.x()
     yy = xspec.Plot.y()
     if not erange:
@@ -342,7 +344,8 @@ def plot_fit(xspec, model, fitrange=False, dataGroup=1,erange=False,yrange = [-3
     if annotation:
         fig.add_annotation(x=1.25,y=.5,text=annotation,align='left',xref='x domain',yref='paper')
     fig.update_yaxes(title='Residuals',range=res_range,row=2,col=1)
-    fig.update_xaxes(title='Energy (keV)',range=erange,row=2,col=1)
+    fig.update_xaxes(type='log',showexponent = 'all',exponentformat = 'e', title='Energy (keV)',range=[0,2],row=2,col=1)
+    fig.update_xaxes(type='log',showexponent = 'all',exponentformat = 'e', title='Energy (keV)',range=[0,2],row=1,col=1)
     fig.update_layout(width=width,height=height,title=title)
     
     if plotdata_dict: #return plot data in a dictionary
@@ -353,11 +356,12 @@ def plot_fit(xspec, model, fitrange=False, dataGroup=1,erange=False,yrange = [-3
         return fig, plotdata
     return fig
     
-def annotate_plot(model, last_component=False, exclude_parameters = ['norm'], error = False):
+def annotate_plot(model, chisq=None, last_component=False, exclude_parameters = ['norm'], error = False, MK = False):
     '''annotations for plot - parameters and confidence intervals if they can be calculated
     Input: xspec Model object
     Output: HTML-formatted string'''
-    fittext = ""
+    fittext = "" if not chisq else f"Chisq: {chisq:.2f}<br>"
+
     if not last_component:
         cnames = model.componentNames[:-1]
     for comp in cnames:
@@ -366,6 +370,10 @@ def annotate_plot(model, last_component=False, exclude_parameters = ['norm'], er
             if par not in exclude_parameters:
                 p = getattr(mc,par)
                 val = p.values[0]
+                unit = p.unit
+                if comp == 'apec' and par == 'kT' and MK: #convert from keV
+                    val /= 0.08617 # eV/K -> keV/MK
+                    unit = 'MK'
                 fmt = ".2e"
                 if np.abs(np.log10(val)) < 2:
                     fmt = ".2f"
@@ -373,5 +381,7 @@ def annotate_plot(model, last_component=False, exclude_parameters = ['norm'], er
                     errs = f"({p.error[0]:{fmt}}-{p.error[1]:{fmt}})"
                 else:
                  errs = f"±{p.sigma:{fmt}}"#""
-                fittext += f"{par}: {val:{fmt}} {errs} {p.unit}<br>"
+                fittext += f"{par}: {val:{fmt}} {errs} {unit}<br>"
+    if fittext.endswith("<br>"):
+        fittext = fittext[:-4].strip()
     return fittext

@@ -547,11 +547,12 @@ def correct_spectrogram_time(spec):
     """Change time in STIX spectrogram object to actual times instead of seconds since"""
     return [pd.to_datetime(spec.T0_utc)+td(seconds=t) for t in spec.time]
 
-def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC'):
+def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506):
     """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
     if isinstance(filename, str):
         spec = fits.open(filename)
         rate=spec[1].data['RATE']
+        rate_err = spec[1].data['STAT_ERR']
         spectime=spec[1].data['TIME']
         emin=list(spec[2].data['E_MIN'])
         emax=list(spec[2].data['E_MAX'])
@@ -559,7 +560,8 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         tformat = 'mjd'
     else: #assume it's a stixpy.processing.spectrogram.spectrogram.Spectrogram
         spec = filename
-        rate = spec.counts
+        rate = spec.rate
+        rate_err = spec.stat_err
         if spec.alpha and 'correction' not in spec.history:
             rate = np.sum(rate,axis=1) #sum over detector
         spectime = spec.t_axis.time_mean
@@ -567,10 +569,10 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         emax = spec.e_axis.high.tolist()
         tformat = None
     
-    tt=Time(spectime, tformat)
+    tt=Time(spectime, format = tformat)
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
     plot_rate = rate.T
-    cbar_title = "Count Rate"
+    cbar_title = "Background Subtracted Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #pretty much true, since counts was divided by eff_ewidth during correction
     plot_time = tt
     
     if log:
@@ -606,7 +608,7 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in zip(emin,emax)]
         
         for bi,b in zip(bin_idx,bins):
-            fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0),xaxis='x1',mode='lines',name=f"{b[0]:.0f}-{b[1]:.0f} keV"))
+            fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0)*gridfac,error_y=dict(type='data',array=np.sum(rate_err[bi[0]:bi[1]],axis=0)*gridfac),xaxis='x1',mode='lines',line_shape='hv',name=f"{b[0]:.0f}-{b[1]:.0f} keV")) #plot errors
             fig.update_yaxes(dict(title='Count Rate'))
     fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval),ticktext=np.arange(1,(plot_rate.size+1)/tickinterval),tickangle=360,overlaying='x',side='top'))
     fig.update_layout(title=f"Spectrogram {plot_time[0].datetime:%Y-%m-%d %H:%M:%S}")
@@ -633,7 +635,7 @@ def plot_stix_livetime(filename, log=False, tickinterval = 100, time_int = None,
         emax = spec.e_axis.high
         tformat = None
     
-    tt=Time(spectime, tformat)
+    tt=Time(spectime, format = tformat)
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
     plot_rate = ltime.T
     plot_time = tt
@@ -642,7 +644,7 @@ def plot_stix_livetime(filename, log=False, tickinterval = 100, time_int = None,
         plot_rate = np.log10(plot_rate)
         plot_rate[np.isnan(plot_rate)] = np.nanmin(plot_rate)
         
-    print(plot_rate.shape)
+    #print(plot_rate.shape)
     if time_int: #format HH:MM
         idx_start = tt[0]
         idx_end = tt[-1]
