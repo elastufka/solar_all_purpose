@@ -547,7 +547,7 @@ def correct_spectrogram_time(spec):
     """Change time in STIX spectrogram object to actual times instead of seconds since"""
     return [pd.to_datetime(spec.T0_utc)+td(seconds=t) for t in spec.time]
 
-def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506):
+def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506, error=True):
     """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
     if isinstance(filename, str):
         spec = fits.open(filename)
@@ -556,6 +556,7 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         spectime=spec[1].data['TIME']
         emin=list(spec[2].data['E_MIN'])
         emax=list(spec[2].data['E_MAX'])
+        header = spec[1].header
         spec.close()
         tformat = 'mjd'
     else: #assume it's a stixpy.processing.spectrogram.spectrogram.Spectrogram
@@ -567,9 +568,13 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         spectime = spec.t_axis.time_mean
         emin = spec.e_axis.low.tolist()
         emax = spec.e_axis.high.tolist()
+        header = spec.primary_header
         tformat = None
     
     tt=Time(spectime, format = tformat)
+    if tt.datetime[0].year < 2020 or tt.datetime[0].year > dt.now().year: #find a better way of doing this
+        #compare time axis
+        tt = Time([Time(header['TIMEZERO']+header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
     plot_rate = rate.T
     cbar_title = "Background Subtracted Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #pretty much true, since counts was divided by eff_ewidth during correction
@@ -602,13 +607,16 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in bins]
         elif isinstance(binning, list): #bins are a list of tuples
             bins = binning
-            bin_idx = [[emin.index(l),emin.index(h)] for l,h in bins]
+            bin_idx = [[emin.index(np.float32(l)),emin.index(np.float32(h))] for l,h in bins]
         else: # no binning
             bins = [[l,h] for l,h in zip(emin,emax)]
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in zip(emin,emax)]
         
         for bi,b in zip(bin_idx,bins):
-            fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0)*gridfac,error_y=dict(type='data',array=np.sum(rate_err[bi[0]:bi[1]],axis=0)*gridfac),xaxis='x1',mode='lines',line_shape='hv',name=f"{b[0]:.0f}-{b[1]:.0f} keV")) #plot errors
+            error_y = None
+            if error:
+                error_y=dict(type='data',array=np.sum(rate_err[bi[0]:bi[1]],axis=0)*gridfac)
+            fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0)*gridfac,error_y=error_y,xaxis='x1',mode='lines',line_shape='hv',name=f"{b[0]:.0f}-{b[1]:.0f} keV")) #plot errors
             fig.update_yaxes(dict(title='Count Rate'))
     fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval),ticktext=np.arange(1,(plot_rate.size+1)/tickinterval),tickangle=360,overlaying='x',side='top'))
     fig.update_layout(title=f"Spectrogram {plot_time[0].datetime:%Y-%m-%d %H:%M:%S}")

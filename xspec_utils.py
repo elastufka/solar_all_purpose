@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 #import matplotlib.pyplot as plt
 
-#from datetime import datetime as dt
+from datetime import datetime as dt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from IPython.display import Markdown
@@ -25,6 +25,11 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     duration_seconds = rate_data['TIMEDEL'] #seconds
     duration_day = duration_seconds/86400
     time_bin_center = rate_data['TIME']
+    if Time(time_bin_center[0], format='mjd').datetime.year < 2020 or Time(time_bin_center[0], format='mjd').datetime.year > dt.now().year: #fix the time
+        #compare time axis
+        tt = Time([Time(rate_header['TIMEZERO']+rate_header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in time_bin_center])
+        time_bin_center = tt.mjd
+
     t_start = Time([bc - d/2. for bc,d in zip(time_bin_center, duration_day)], format='mjd')
     t_end = Time([bc + d/2. for bc,d in zip(time_bin_center, duration_day)], format='mjd')
     t_mean = Time(time_bin_center, format='mjd')
@@ -34,16 +39,19 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     tend = Time(end_time)
     tselect = np.where(np.logical_and(time_bin_center >= tstart.mjd,time_bin_center < tend.mjd)) #boolean mask
     #ttimes = time_bin_center[tselect] #actual times
-    print(f"tselect {tselect[0][0]} {tselect[0][-1]}")
+    #print(f"tselect {tselect[0][0]} {tselect[0][-1]}")
+    exposure =  np.sum(rate_data['TIMEDEL'][tselect[0]]*rate_data['LIVETIME'][tselect[0]])
+
     #rate data
-    total_counts = np.array([np.sum(rate_data['RATE'][tselect],axis=0)]).reshape((1,nchan))
-    print(f"max counts: {np.max(total_counts)}")
+    avg_counts = np.array([np.mean(rate_data['RATE'][tselect],axis=0)]).reshape((1,nchan)) #mean since it's already a rate
+    #print(f"max counts: {np.max(total_counts)}")
     
     #average livetime data - same number for each channel
-    avg_livetime = np.array([np.mean(rate_data['LIVETIME'][tselect]) for n in range(nchan)]).reshape((1,nchan)) #np.array([np.mean(rate_data['LIVETIME'][tselect])]).reshape((1,))
+    avg_livetime = np.array([np.mean(rate_data['LIVETIME'][tselect]) for n in range(nchan)]).reshape((1,nchan)) #now sum #np.array([np.mean(rate_data['LIVETIME'][tselect])]).reshape((1,))
     
     #error...
     avg_err = np.mean(rate_data['STAT_ERR'][tselect],axis=0).reshape((1,nchan))
+    avg_sys_err = np.mean(rate_data['SYS_ERR'][tselect],axis=0).reshape((1,nchan))
     
     # Update keywords that need updating
     #rate_header['DETCHANS'] = self.n_energies
@@ -51,10 +59,9 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     rate_header.set('NAXIS1', 1)
     del rate_header['NAXIS2']
     
-    exposure =  np.sum(rate_data['TIMEDEL'][tselect[0]]*rate_data['LIVETIME'][tselect[0]])
-    rate_header['EXPOSURE'] = exposure
-    rate_header['ONTIME'] = exposure
-    print(f"exposure: {exposure}")
+    #rate_header['EXPOSURE'] = exposure #does this make a difference?
+    #rate_header['ONTIME'] = exposure
+    #print(f"exposure: {exposure}")
     #update times in rate header
     rate_header['TSTARTI'] = int(np.modf(tstart.mjd)[1]) #Integer portion of start time rel to TIMESYS
     rate_header['TSTARTF'] = np.modf(tstart.mjd)[0] #Fractional portion of start time
@@ -62,9 +69,9 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
     rate_header['TSTOPF'] = np.modf(tend.mjd)[0]
 
     #update rate data
-    print(f"max count rate: {np.max(total_counts/exposure)}")
-    rate_names = ['RATE', 'STAT_ERR', 'CHANNEL', 'SPEC_NUM', 'LIVETIME', 'TIME', 'TIMEDEL']
-    rate_table = Table([(total_counts/exposure).astype('>f8'), avg_err.astype('>f8'), rate_data['CHANNEL'][0].reshape((1,nchan)), [0],avg_livetime.astype('>f8'), np.array([rate_data['TIME'][tselect[0][0]]]), np.array([np.sum(rate_data['TIMEDEL'][tselect])])], names = rate_names) #is spec.counts what we want?
+    #print(f"max count rate: {np.max(total_counts/exposure)}")
+    rate_names = ['RATE', 'STAT_ERR', 'CHANNEL', 'SPEC_NUM', 'LIVETIME', 'TIME', 'TIMEDEL', 'SYS_ERR']
+    rate_table = Table([avg_counts.astype('>f8'), avg_err.astype('>f8'), rate_data['CHANNEL'][0].reshape((1,nchan)), [0],avg_livetime.astype('>f8'), np.array([rate_data['TIME'][tselect[0][0]]]), np.array([np.sum(rate_data['TIMEDEL'][tselect])]), avg_sys_err], names = rate_names) #is spec.counts what we want?
 
     #primary_HDU = fits.PrimaryHDU(header = primary_header)
     rate_HDU = fits.BinTableHDU(header = rate_header, data = rate_table)
@@ -77,7 +84,7 @@ def spectrum_from_time_interval(original_fitsfile, start_time, end_time, out_fit
 
 #def select_background_interval():
 
-def fit_thermal_nonthermal(xspec, ntmodel = 'bknpower', lowErange = [2.0,10.0], highErange = [8.0,30.0], breakEstart = 15, breakEfrozen=False, minCounts=10, statMethod='chi',query='no',renorm=True,nIterations = 1000):
+def fit_thermal_nonthermal(xspec, thmodel = 'apec', ntmodel = 'bknpower', lowErange = [2.0,10.0], highErange = [8.0,30.0], breakEstart = 15, breakEfrozen=False, minCounts=10, statMethod='chi',query='no',renorm=True,nIterations = 1000,renotice = True):
     '''Fit thermal and non-thermal components to spectrum via the following steps:
         1) fit thermal over low energy
         2) fit non-thermal over high-energy with initial break energy frozen (if non-thermal model is bknpow or thick2)
@@ -93,67 +100,70 @@ def fit_thermal_nonthermal(xspec, ntmodel = 'bknpower', lowErange = [2.0,10.0], 
     xspec.Fit.nIterations = nIterations
         
     #step 1
-    m = xspec.Model(f'apec')
+    m = xspec.Model(f'{thmodel}')
     xspec.AllData.ignore(f"0.-{lowErange[0]} {lowErange[1]}-**")
     
     xspec.Fit.renorm()
     xspec.Fit.perform()
     
-    mtherm_params = get_xspec_model_params(m.apec, norm = True)
+    mtherm_params = get_xspec_model_params(getattr(m,thmodel), norm = True)
     
-    #step2 - fit non-thermal
-    xspec.AllModels.clear()
-    m = xspec.Model(f'apec+{ntmodel}')
-    m_th = m.apec
-    set_xspec_model_params(m, 'apec', mtherm_params, frozen = True)
-        
-    m_nt = getattr(m,ntmodel)
-    try: #in thick2 it's eebrk not BreakE...
-        breakEindex = getattr(m_nt, 'BreakE')._Parameter__index
-        m.setPars({breakEindex:f"{breakEstart} -.5,,,{breakEstart+2}"})
-        breakparname = 'BreakE'
-        #p = getattr(m_nt,'BreakE')
-    except AttributeError:
-        try:
-            breakEindex = getattr(m_nt, 'eebrk')._Parameter__index
+    if ntmodel is not None:
+        #step2 - fit non-thermal
+        xspec.AllModels.clear()
+        m = xspec.Model(f'{thmodel}+{ntmodel}')
+        m_th = getattr(m, thmodel)
+        set_xspec_model_params(m, thmodel, mtherm_params, frozen = True)
+            
+        m_nt = getattr(m,ntmodel)
+        try: #in thick2 it's eebrk not BreakE...
+            breakEindex = getattr(m_nt, 'BreakE')._Parameter__index
             m.setPars({breakEindex:f"{breakEstart} -.5,,,{breakEstart+2}"})
-            breakparname = 'eebrk'
-            lowEindex = getattr(m_nt, 'eelow')._Parameter__index
-            m.setPars({lowEindex:f"{breakEstart-5} -.5,,,{breakEstart-2}"})
-            p = getattr(getattr(m,ntmodel),'eelow')
-            p.frozen = False
+            breakparname = 'BreakE'
+            #p = getattr(m_nt,'BreakE')
         except AttributeError:
-            breakE = False
- 
-    xspec.AllData.notice('all')
-    #check that count rate at highErange is above minCounts, otherwise adjust highErange and warn
-    #TBD
-    #warn for negative count rate and zero errors while we're here
-    #TBD
-    xspec.AllData.ignore(f"0.-{highErange[0]} {highErange[1]}-**")
-    
-    xspec.Fit.renorm()
-    xspec.Fit.perform()
-
-    if breakE and not breakEfrozen: #fit again with unfrozen break E
-        p = getattr(getattr(m,ntmodel),breakparname)
-        p.frozen = False
+            try:
+                breakEindex = getattr(m_nt, 'eebrk')._Parameter__index
+                m.setPars({breakEindex:f"{breakEstart} -.5,,,{breakEstart+2}"})
+                breakparname = 'eebrk'
+                lowEindex = getattr(m_nt, 'eelow')._Parameter__index
+                m.setPars({lowEindex:f"{breakEstart-5} -.5,,,{breakEstart-2}"})
+                p = getattr(getattr(m,ntmodel),'eelow')
+                p.frozen = False
+            except AttributeError:
+                breakE = False
+     
+        xspec.AllData.notice('all')
+        #check that count rate at highErange is above minCounts, otherwise adjust highErange and warn
+        #TBD
+        #warn for negative count rate and zero errors while we're here
+        #TBD
+        xspec.AllData.ignore(f"0.-{highErange[0]} {highErange[1]}-**")
+        
         xspec.Fit.renorm()
         xspec.Fit.perform()
+
+        if breakE and not breakEfrozen: #fit again with unfrozen break E
+            p = getattr(getattr(m,ntmodel),breakparname)
+            p.frozen = False
+            xspec.Fit.renorm()
+            xspec.Fit.perform()
+            
+        #step 3 - fit together, all parameters free
+        for param in ['kT','norm']:
+            p = getattr(m_th, param)
+            p.frozen = False
+            
+        xspec.AllData.notice('all')
+        xspec.AllData.ignore(f"0.-{lowErange[0]} {highErange[1]}-**")
         
-    #step 3 - fit together, all parameters free
-    for param in ['kT','norm']:
-        p = getattr(m.apec, param)
-        p.frozen = False
-        
-    xspec.AllData.notice('all')
-    xspec.AllData.ignore(f"0.-{lowErange[0]} {highErange[1]}-**")
-    
-    xspec.Fit.renorm()
-    xspec.Fit.perform()
+        xspec.Fit.renorm()
+        xspec.Fit.perform()
     print(f"Fit statistic: {xspec.Fit.statMethod.capitalize()}   {xspec.Fit.statistic:.3f} \n Null hypothesis probability of {xspec.Fit.nullhyp:.2e} with {xspec.Fit.dof} degrees of freedom")
-    xspec.AllData.notice('all')
-    return m, xspec.Fit.statistic
+    fitstat = xspec.Fit.statistic
+    if renotice:
+        xspec.AllData.notice('all')
+    return m,fitstat
 
 
 def get_xspec_model_params(model_component, norm=False):
@@ -273,7 +283,7 @@ def plot_data(xspec,fitrange=False, dataGroup=1,erange=False,yrange=False, count
     yrange=[np.floor(np.log10(yy[xl:xg])).min(),np.ceil(np.log10(yy[xl:xg])).max()]
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=xx,y=yy,mode='markers',name='data',error_y=dict(type='data',array=xspec.Plot.yErr())))
+    fig.add_trace(go.Scatter(x=xx,y=yy,line_shape= 'hvh',name='data',error_y=dict(type='data',array=xspec.Plot.yErr())))
     fig.update_yaxes(title=ytitle,range=yrange,type='log',showexponent = 'all',exponentformat = 'e') #type='log'
     fig.update_xaxes(title='Energy (keV)',range = erange)
     fig.update_layout(title = title)
@@ -332,13 +342,13 @@ def plot_fit(xspec, model, fitrange=False, dataGroup=1,erange=False,yrange = [-3
     fig.add_trace(go.Scatter(x=xx,y=yy,mode='markers',name='data',error_y=dict(type='data',array=yErr)),row=1,col=1)
     for m, model_name in zip(model_comps,cnames):
         if '+' in model_name: #match color to residuals
-            fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_color = 'black', line_shape = 'hv'),row=1,col=1)
+            fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_color = 'black', line_shape = 'hvh'),row=1,col=1)
         else:
-            fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_shape = 'hv'),row=1,col=1)
+            fig.add_trace(go.Scatter(x=xx,y=m,name=model_name, line_shape = 'hvh'),row=1,col=1)
 
     #plot residuals
     fig.update_yaxes(type='log',row=1,col=1,showexponent = 'all',exponentformat = 'e',range=yrange, title = 'Count Rate')
-    fig.add_trace(go.Scatter(x=xx,y=res,mode = 'lines+markers',marker_color='black',name='residuals',line_shape = 'hv'),row=2,col=1)
+    fig.add_trace(go.Scatter(x=xx,y=res,mode = 'lines+markers',marker_color='black',name='residuals',line_shape = 'hvh'),row=2,col=1)
     fig.add_vrect(x0=fitrange[0],x1=fitrange[1],annotation_text='fit range',fillcolor='lightgreen',opacity=.25,line_width=0,row=1,col=1)
     fig.add_vrect(x0=fitrange[0],x1=fitrange[1],fillcolor='lightgreen',opacity=.25,line_width=0,row=2,col=1)
     if annotation:
@@ -371,16 +381,18 @@ def annotate_plot(model, chisq=None, last_component=False, exclude_parameters = 
                 p = getattr(mc,par)
                 val = p.values[0]
                 unit = p.unit
-                if comp == 'apec' and par == 'kT' and MK: #convert from keV
+                sigma = p.sigma
+                if comp in ['apec','vth'] and par == 'kT' and MK: #convert from keV
                     val /= 0.08617 # eV/K -> keV/MK
                     unit = 'MK'
+                    sigma /= 0.08617
                 fmt = ".2e"
                 if np.abs(np.log10(val)) < 2:
                     fmt = ".2f"
                 if p.error[2] == "FFFFFFFFF" and error: #error calculated sucessfully
                     errs = f"({p.error[0]:{fmt}}-{p.error[1]:{fmt}})"
                 else:
-                 errs = f"±{p.sigma:{fmt}}"#""
+                 errs = f"±{sigma:{fmt}}"#""
                 fittext += f"{par}: {val:{fmt}} {errs} {unit}<br>"
     if fittext.endswith("<br>"):
         fittext = fittext[:-4].strip()
