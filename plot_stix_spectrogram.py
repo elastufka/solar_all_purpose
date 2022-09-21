@@ -10,11 +10,18 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
     """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
     if isinstance(filename, str):
         spec = fits.open(filename)
-        rate=spec[1].data['RATE']
-        rate_err = spec[1].data['STAT_ERR']
-        spectime=spec[1].data['TIME']
-        emin=list(spec[2].data['E_MIN'])
-        emax=list(spec[2].data['E_MAX'])
+        try:
+            rate=spec[1].data['RATE']
+            rate_err = spec[1].data['STAT_ERR']
+            spectime=spec[1].data['TIME']
+            emin=list(spec[2].data['E_MIN'])
+            emax=list(spec[2].data['E_MAX'])
+        except KeyError: #it's a raw spectrogram
+            rate=spec[2].data['counts']
+            rate_err = spec[2].data['counts_err']
+            spectime=spec[2].data['time']
+            emin=list(spec[3].data['e_low'])
+            emax=list(spec[3].data['e_high'])
         header = spec[1].header
         spec.close()
         tformat = 'mjd'
