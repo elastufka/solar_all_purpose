@@ -16,13 +16,26 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
             spectime=spec[1].data['TIME']
             emin=list(spec[2].data['E_MIN'])
             emax=list(spec[2].data['E_MAX'])
+            header = spec[1].header
+            cbar_title = "Counts s<sup>-1</sup>"
         except KeyError: #it's a raw spectrogram
             rate=spec[2].data['counts']
             rate_err = spec[2].data['counts_err']
-            spectime=spec[2].data['time']
+            time_bin_center=spec[2].data['time']
+            duration = spec[2].data['timedel']
+            header = spec[0].header
+            start_time = dt.strptime(header['DATE_BEG'],"%Y-%m-%dT%H:%M:%S.%f")
+            print('start_time',start_time)
+            factor=1.
+            spectime = Time([start_time + td(seconds = bc/factor - d/(2.*factor)) for bc,d in zip(time_bin_center, duration)]).mjd
+
             emin=list(spec[3].data['e_low'])
             emax=list(spec[3].data['e_high'])
-        header = spec[1].header
+            # timezeri = int(Time(start_time).mjd) - spec[0].header['MJDREF']
+
+            # header.set('TIMEZERO',timezeri)
+            # print('TIMEZERO',timezeri)
+            cbar_title = 'Counts'
         spec.close()
         tformat = 'mjd'
     else: #assume it's a stixpy.processing.spectrogram.spectrogram.Spectrogram
@@ -36,21 +49,28 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
         emax = spec.e_axis.high.tolist()
         header = spec.primary_header
         tformat = None
-    
+        cbar_title = "Background Subtracted Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>"
+
     tt=Time(spectime, format = tformat)
-    if tt.datetime[0].year < 2020 or tt.datetime[0].year > dt.now().year: #find a better way of doing this
-        #compare time axis
+    if header['MJDREF'] == 43874.0 and tformat == 'mjd':
+        #tt = Time([Time(header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
+    #else:
         tt = Time([Time(header['TIMEZERO']+header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
+
+    print(tt[0].isot,tt[-1].isot)
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
+    if rate.ndim > 2: #sum over pixels and detectors...
+      rate = np.sum(np.sum(rate, axis=1),axis=1)
+      rate_err = np.sum(np.sum(rate_err, axis=1),axis=1)
     plot_rate = rate.T
-    cbar_title = "Background Subtracted Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #pretty much true, since counts was divided by eff_ewidth during correction
+    cbar_title = cbar_title
     plot_time = tt
-    
+
     if log:
         plot_rate = np.log10(plot_rate)
         plot_rate[np.isnan(plot_rate)] = np.nanmin(plot_rate)
         
-    #print(plot_rate.shape)
+    print(plot_rate.shape)
     if time_int: #format HH:MM
         idx_start = tt[0]
         idx_end = tt[-1]
@@ -69,7 +89,7 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
     elif mode.lower() == 'scatter':
         emin.append(emax[-1])
         if binning == 'SDC':
-            bins = [(4,10),(10,15),(15,25),(25,50)] #keV
+            bins = [(4,10),(10,15),(15,25),(25,50),(50,100),(100,150)] #keV
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in bins]
         elif isinstance(binning, list): #bins are a list of tuples
             bins = binning
