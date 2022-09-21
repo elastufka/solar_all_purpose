@@ -25,7 +25,7 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
             duration = spec[2].data['timedel']
             header = spec[0].header
             start_time = dt.strptime(header['DATE_BEG'],"%Y-%m-%dT%H:%M:%S.%f")
-            print('start_time',start_time)
+            #print('start_time',start_time)
             factor=1.
             spectime = Time([start_time + td(seconds = bc/factor - d/(2.*factor)) for bc,d in zip(time_bin_center, duration)]).mjd
 
@@ -57,7 +57,7 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
     #else:
         tt = Time([Time(header['TIMEZERO']+header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
 
-    print(tt[0].isot,tt[-1].isot)
+    #print(tt[0].isot,tt[-1].isot)
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
     if rate.ndim > 2: #sum over pixels and detectors...
       rate = np.sum(np.sum(rate, axis=1),axis=1)
@@ -70,7 +70,7 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
         plot_rate = np.log10(plot_rate)
         plot_rate[np.isnan(plot_rate)] = np.nanmin(plot_rate)
         
-    print(plot_rate.shape)
+    #print(plot_rate.shape)
     if time_int: #format HH:MM
         idx_start = tt[0]
         idx_end = tt[-1]
