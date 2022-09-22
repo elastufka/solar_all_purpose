@@ -94,7 +94,7 @@ def spec_fits_crop(fitsfile, tstart,tend, outfilename = None):
     #correct keywords in primary header
     primary_header = fits_time_corrections(primary_header, tstart, tend)
     if not outfilename:
-      outfilename = f"{fitsfile1[:-5]}_{Time(tstart).datetime:%H%M%S}_{Time(tend).datetime:%H%M%S}.fits"
+      outfilename = f"{fitsfile[:-5]}_{Time(tstart).datetime:%H%M%S}_{Time(tend).datetime:%H%M%S}.fits"
     primary_header.set('FILENAME', outfilename[outfilename.rfind('/')+1:])
     primary_HDU = fits.PrimaryHDU(header = primary_header)
 
