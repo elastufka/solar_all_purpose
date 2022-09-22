@@ -147,8 +147,10 @@ def spec_fits_concatenate(fitsfile1, fitsfile2, tstart = None,tend = None, outfi
         new_data = np.concatenate([data1.data[n][idx0:,:], data2.data[n][idx1:idx2,:]])
       else:
         if n == 'time': #this has to be done differently since it is relative to timezero
-          timevec2 = fits_time_to_datetime(primary_header2, data2.data).mjd - Time(primary_header1['DATE_BEG']).mjd
-          new_data = np.concatenate([data1.data[n][idx0:], timevec2[idx1:idx2]*86400])
+          timevec1 = fits_time_to_datetime(primary_header1, data1.data).mjd #- Time(primary_header['DATE_BEG']).mjd
+          timevec1 -= timevec1[idx0] #relative to new start time
+          timevec2 = fits_time_to_datetime(primary_header2, data2.data).mjd - timevec1[idx0] #relative to new start time #Time(primary_header1['DATE_BEG']).mjd
+          new_data = np.concatenate([timevec1[idx0:], timevec2[idx1:idx2]*86400])
         else:
           new_data = np.concatenate([data1.data[n][idx0:], data2.data[n][idx1:idx2]])
       #print('new data', new_data.shape)
