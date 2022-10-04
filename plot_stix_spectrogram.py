@@ -6,36 +6,16 @@ from datetime import datetime as dt
 from datetime import timedelta as td
 import plotly.graph_objects as go
 
-def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506, error=True):
+def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506, error=True, zmin = None, zmax = None):
     """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
     if isinstance(filename, str):
         spec = fits.open(filename)
-        try:
-            rate=spec[1].data['RATE']
-            rate_err = spec[1].data['STAT_ERR']
-            spectime=spec[1].data['TIME']
-            emin=list(spec[2].data['E_MIN'])
-            emax=list(spec[2].data['E_MAX'])
-            header = spec[1].header
-            cbar_title = "Counts s<sup>-1</sup>"
-        except KeyError: #it's a raw spectrogram
-            rate=spec[2].data['counts']
-            rate_err = spec[2].data['counts_err']
-            time_bin_center=spec[2].data['time']
-            duration = spec[2].data['timedel']
-            header = spec[0].header
-            start_time = dt.strptime(header['DATE_BEG'],"%Y-%m-%dT%H:%M:%S.%f")
-            #print('start_time',start_time)
-            factor=1.
-            spectime = Time([start_time + td(seconds = bc/factor - d/(2.*factor)) for bc,d in zip(time_bin_center, duration)]).mjd
-
-            emin=list(spec[3].data['e_low'])
-            emax=list(spec[3].data['e_high'])
-            # timezeri = int(Time(start_time).mjd) - spec[0].header['MJDREF']
-
-            # header.set('TIMEZERO',timezeri)
-            # print('TIMEZERO',timezeri)
-            cbar_title = 'Counts'
+        rate=spec[1].data['RATE']
+        rate_err = spec[1].data['STAT_ERR']
+        spectime=spec[1].data['TIME']
+        emin=list(spec[2].data['E_MIN'])
+        emax=list(spec[2].data['E_MAX'])
+        header = spec[1].header
         spec.close()
         tformat = 'mjd'
     else: #assume it's a stixpy.processing.spectrogram.spectrogram.Spectrogram
@@ -49,21 +29,14 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
         emax = spec.e_axis.high.tolist()
         header = spec.primary_header
         tformat = None
-        cbar_title = "Background Subtracted Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>"
 
     tt=Time(spectime, format = tformat)
-    if header['MJDREF'] == 43874.0 and tformat == 'mjd':
-        #tt = Time([Time(header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
-    #else:
+    if tt.datetime[0].year < 2020 or tt.datetime[0].year > dt.now().year: #find a better way of doing this
+        #compare time axis
         tt = Time([Time(header['TIMEZERO']+header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
-
-    #print(tt[0].isot,tt[-1].isot)
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
-    if rate.ndim > 2: #sum over pixels and detectors...
-      rate = np.sum(np.sum(rate, axis=1),axis=1)
-      rate_err = np.sum(np.sum(rate_err, axis=1),axis=1)
     plot_rate = rate.T
-    cbar_title = cbar_title
+    cbar_title = "Background Subtracted<br> Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #pretty much true, since counts was divided by eff_ewidth during correction
     plot_time = tt
 
     if log:
@@ -83,13 +56,20 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
         plot_time = plot_time[idx_start:idx_end]
         
     fig = go.Figure()
+    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval)*tickinterval,ticktext=np.arange(1,(plot_rate.size+1)/tickinterval)*tickinterval,tickangle=360,overlaying='x',side='top'))
     if mode.lower() == 'heatmap':
-        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title,xaxis='x1'))
+        fig.add_trace(go.Heatmap(x=np.arange(plot_rate.size),z=plot_rate,colorbar_title=cbar_title,xaxis='x2', zauto= False, zmin = zmin, zmax = zmax, opacity = 0))
+        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title,xaxis='x1', zauto= False, zmin = zmin, zmax = zmax))
         fig.update_yaxes(dict(title='Energy Bin (keV)',tickmode='array',ticktext=ylabels,tickvals=np.arange(len(ylabels))))
+        #if zmin:
+        #    fig.update_layout(coloraxis_cmin = zmin)
+        #if zmax:
+        #    fig.update_layout(coloraxis_cmax = zmax)
     elif mode.lower() == 'scatter':
+        
         emin.append(emax[-1])
         if binning == 'SDC':
-            bins = [(4,10),(10,15),(15,25),(25,50),(50,100),(100,150)] #keV
+            bins = [(4,10),(10,15),(15,25),(25,50)] #keV
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in bins]
         elif isinstance(binning, list): #bins are a list of tuples
             bins = binning
@@ -98,13 +78,14 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
             bins = [[l,h] for l,h in zip(emin,emax)]
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in zip(emin,emax)]
         
+        #fig.add_trace(go.Scatter(x=np.arange(plot_rate.size),y=np.sum(plot_rate[bin_idx[0][0]:bin_idx[0][1]],axis=0)*gridfac,xaxis='x2',mode='lines',line_shape='hv')) #uneven time bins mess this up...
         for bi,b in zip(bin_idx,bins):
             error_y = None
             if error:
                 error_y=dict(type='data',array=np.sum(rate_err[bi[0]:bi[1]],axis=0)*gridfac)
             fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0)*gridfac,error_y=error_y,xaxis='x1',mode='lines',line_shape='hv',name=f"{b[0]:.0f}-{b[1]:.0f} keV")) #plot errors
             fig.update_yaxes(dict(title='Count Rate'))
-    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval),ticktext=np.arange(1,(plot_rate.size+1)/tickinterval),tickangle=360,overlaying='x',side='top'))
+
     fig.update_layout(title=f"Spectrogram {plot_time[0].datetime:%Y-%m-%d %H:%M:%S}")
     return fig
     

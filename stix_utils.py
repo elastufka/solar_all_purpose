@@ -547,7 +547,7 @@ def correct_spectrogram_time(spec):
     """Change time in STIX spectrogram object to actual times instead of seconds since"""
     return [pd.to_datetime(spec.T0_utc)+td(seconds=t) for t in spec.time]
 
-def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506, error=True):
+def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, idx_int = None, mode = 'Heatmap', binning = 'SDC', gridfac = 0.265506, error=True, zmin = None, zmax = None):
     """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
     if isinstance(filename, str):
         spec = fits.open(filename)
@@ -577,7 +577,7 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         tt = Time([Time(header['TIMEZERO']+header['MJDREF'], format='mjd').datetime + td(seconds = t) for t in spectime])
     ylabels=[f"{n:.0f}-{x:.0f}" for n,x in zip(emin,emax)]
     plot_rate = rate.T
-    cbar_title = "Background Subtracted Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #pretty much true, since counts was divided by eff_ewidth during correction
+    cbar_title = "Background Subtracted<br> Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #pretty much true, since counts was divided by eff_ewidth during correction
     plot_time = tt
     
     if log:
@@ -597,10 +597,17 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         plot_time = plot_time[idx_start:idx_end]
         
     fig = go.Figure()
+    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval)*tickinterval,ticktext=np.arange(1,(plot_rate.size+1)/tickinterval)*tickinterval,tickangle=360,overlaying='x',side='top'))
     if mode.lower() == 'heatmap':
-        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title,xaxis='x1'))
+        fig.add_trace(go.Heatmap(x=np.arange(plot_rate.size),z=plot_rate,colorbar_title=cbar_title,xaxis='x2', zauto= False, zmin = zmin, zmax = zmax, opacity = 0))
+        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title,xaxis='x1', zauto= False, zmin = zmin, zmax = zmax))
         fig.update_yaxes(dict(title='Energy Bin (keV)',tickmode='array',ticktext=ylabels,tickvals=np.arange(len(ylabels))))
+        #if zmin:
+        #    fig.update_layout(coloraxis_cmin = zmin)
+        #if zmax:
+        #    fig.update_layout(coloraxis_cmax = zmax)
     elif mode.lower() == 'scatter':
+        
         emin.append(emax[-1])
         if binning == 'SDC':
             bins = [(4,10),(10,15),(15,25),(25,50)] #keV
@@ -612,13 +619,14 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
             bins = [[l,h] for l,h in zip(emin,emax)]
             bin_idx = [[emin.index(l),emin.index(h)] for l,h in zip(emin,emax)]
         
+        #fig.add_trace(go.Scatter(x=np.arange(plot_rate.size),y=np.sum(plot_rate[bin_idx[0][0]:bin_idx[0][1]],axis=0)*gridfac,xaxis='x2',mode='lines',line_shape='hv')) #uneven time bins mess this up...
         for bi,b in zip(bin_idx,bins):
             error_y = None
             if error:
                 error_y=dict(type='data',array=np.sum(rate_err[bi[0]:bi[1]],axis=0)*gridfac)
             fig.add_trace(go.Scatter(x=plot_time.isot,y=np.sum(plot_rate[bi[0]:bi[1]],axis=0)*gridfac,error_y=error_y,xaxis='x1',mode='lines',line_shape='hv',name=f"{b[0]:.0f}-{b[1]:.0f} keV")) #plot errors
             fig.update_yaxes(dict(title='Count Rate'))
-    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval),ticktext=np.arange(1,(plot_rate.size+1)/tickinterval),tickangle=360,overlaying='x',side='top'))
+    
     fig.update_layout(title=f"Spectrogram {plot_time[0].datetime:%Y-%m-%d %H:%M:%S}")
     return fig
     
