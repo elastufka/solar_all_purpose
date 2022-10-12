@@ -18,9 +18,12 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
              emax=list(spec[2].data['E_MAX'])
              header = spec[1].header
              cbar_title = "Background Subtracted<br> Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #"Counts s<sup>-1</sup>"
-         except KeyError: #it's a raw spectrogram
+        except KeyError: #it's a raw spectrogram
              rate=spec[2].data['counts']
              rate_err = spec[2].data['counts_err']
+             if rate.ndim > 2:
+                rate = np.sum(np.sum(rate, axis=2),axis=2)
+                rate_err = np.sum(np.sum(rate_err, axis=2),axis=2)
              time_bin_center=spec[2].data['time']
              duration = spec[2].data['timedel']
              header = spec[0].header
@@ -46,9 +49,8 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
         tformat = 'mjd'
     else: #assume it's a stixpy.processing.spectrogram.spectrogram.Spectrogram
         spec = filename
-        try:
-            rate = spec.rate
-            rate_err = spec.stat_err
+        rate = spec.rate
+        rate_err = spec.stat_err
         if spec.alpha and 'correction' not in spec.history:
             rate = np.sum(rate,axis=1) #sum over detector
         spectime = spec.t_axis.time_mean
