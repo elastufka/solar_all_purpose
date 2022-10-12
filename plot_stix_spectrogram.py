@@ -10,18 +10,45 @@ def plot_stix_spec(filename, log=False, tickinterval = 100, time_int = None, idx
     """Plot STIX spectrum converted to XSPEC-compatible format FITS file """
     if isinstance(filename, str):
         spec = fits.open(filename)
-        rate=spec[1].data['RATE']
-        rate_err = spec[1].data['STAT_ERR']
-        spectime=spec[1].data['TIME']
-        emin=list(spec[2].data['E_MIN'])
-        emax=list(spec[2].data['E_MAX'])
-        header = spec[1].header
+        try:
+             rate=spec[1].data['RATE']
+             rate_err = spec[1].data['STAT_ERR']
+             spectime=spec[1].data['TIME']
+             emin=list(spec[2].data['E_MIN'])
+             emax=list(spec[2].data['E_MAX'])
+             header = spec[1].header
+             cbar_title = "Background Subtracted<br> Counts s<sup>-1</sup> keV<sup>-1</sup> cm<sup>-2</sup>" #"Counts s<sup>-1</sup>"
+         except KeyError: #it's a raw spectrogram
+             rate=spec[2].data['counts']
+             rate_err = spec[2].data['counts_err']
+             time_bin_center=spec[2].data['time']
+             duration = spec[2].data['timedel']
+             header = spec[0].header
+             start_time = dt.strptime(header['DATE_BEG'],"%Y-%m-%dT%H:%M:%S.%f")
+             #print('start_time',start_time)
+             factor=1.
+             spectime = Time([start_time + td(seconds = bc/factor - d/(2.*factor)) for bc,d in zip(time_bin_center, duration)]).mjd
+
+             emin=list(spec[3].data['e_low'])
+             emax=list(spec[3].data['e_high'])
+             # timezeri = int(Time(start_time).mjd) - spec[0].header['MJDREF']
+
+             # header.set('TIMEZERO',timezeri)
+             # print('TIMEZERO',timezeri)
+             cbar_title = 'Counts'
+        #rate=spec[1].data['RATE']
+        #rate_err = spec[1].data['STAT_ERR']
+        #spectime=spec[1].data['TIME']
+        #emin=list(spec[2].data['E_MIN'])
+        #emax=list(spec[2].data['E_MAX'])
+        #header = spec[1].header
         spec.close()
         tformat = 'mjd'
     else: #assume it's a stixpy.processing.spectrogram.spectrogram.Spectrogram
         spec = filename
-        rate = spec.rate
-        rate_err = spec.stat_err
+        try:
+            rate = spec.rate
+            rate_err = spec.stat_err
         if spec.alpha and 'correction' not in spec.history:
             rate = np.sum(rate,axis=1) #sum over detector
         spectime = spec.t_axis.time_mean
