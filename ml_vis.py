@@ -81,6 +81,7 @@ def kmeans_examples(data,clusters,ncluster=0,imshape=(256,256),nexamples=10):
     fig,ax=plt.subplots(nexamples,nexamples,figsize=(8,8))
     rng=np.random.default_rng()
     samples=rng.choice(cluster_counts[ncluster],size=nexamples*nexamples,replace=False) #no duplicates
+    i=0
     for x in ax:
         for y in x:
             y.imshow(cluster_dict[f"cluster_{ncluster}"][samples[i]],cmap=cm.gray)

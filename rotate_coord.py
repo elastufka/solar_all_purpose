@@ -78,8 +78,10 @@ class rotate_coord:
     
     def _check_obs(self, obs_input):
         '''type control '''
-        if type(obs_input) == pd.Series:#SkyCoord:
+        if isinstance(obs_input,pd.Series):#SkyCoord:
             obs_output=obs_input.iloc[0]
+        elif isinstance(obs_input, SkyCoord):
+            obs_output = obs_input.observer #single observer...
         else:
             obs_output=obs_input
         return obs_output

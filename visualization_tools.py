@@ -182,3 +182,5 @@ def dropdown_widget(og_plot,response,options=['BackProjection','ForwardFit','CLE
     method.observe(response,names="value")
     container = widgets.HBox([method])
     return widgets.VBox([container,g])
+
+    

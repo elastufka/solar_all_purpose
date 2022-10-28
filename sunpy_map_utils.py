@@ -29,7 +29,6 @@ from scipy.ndimage import sobel
 from skimage.measure import find_contours
 import pickle
 import cmath
-from flare_physics_utils import cartesian_diff
 #from spacecraft_utils import get_observer, coordinates_body
 
 def query_fido(time_int, wave, series='aia_lev1_euv_12s',instrument=False, cutout_coords=False, jsoc_email='erica.lastufka@fhnw.ch',track_region=True, sample=False, source=False, path=False,single_result=True):

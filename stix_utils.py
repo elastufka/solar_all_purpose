@@ -542,6 +542,23 @@ def dicts2df(ff):
         else:
             noimage_files.append(f)
     return pd.DataFrame(all_dicts),noimage_files
+    
+def open_spec_fits(fits_path):
+    """Open a L1, L1A, or L4 FITS file and return the HDUs
+
+    Args:
+        fits_path (str): Full path to FITS file
+        
+    Returns:
+        tuple : astropy Primary HDU header, control HDU, data HDU, energy HDU
+
+    """
+    with fits.open(fits_path) as hdul:
+        primary_header = hdul[0].header.copy()
+        control = hdul[1].copy()
+        data = hdul[2].copy()
+        energy = hdul[3].copy() if hdul[3].name == 'ENERGIES' else hdul[4].copy()
+    return primary_header, control, data, energy
 
 def correct_spectrogram_time(spec):
     """Change time in STIX spectrogram object to actual times instead of seconds since"""
@@ -597,15 +614,12 @@ def plot_stix_xspec(filename, log=False, tickinterval = 100, time_int = None, id
         plot_time = plot_time[idx_start:idx_end]
         
     fig = go.Figure()
-    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval)*tickinterval,ticktext=np.arange(1,(plot_rate.size+1)/tickinterval)*tickinterval,tickangle=360,overlaying='x',side='top'))
+#    fig.update_layout(xaxis2=dict(title='Index',tickmode='array',anchor='y',tickvals=np.arange(plot_rate.size/tickinterval)*tickinterval,ticktext=np.arange(1,(plot_rate.size+1)/tickinterval)*tickinterval,tickangle=360,overlaying='x',side='top'))
     if mode.lower() == 'heatmap':
-        fig.add_trace(go.Heatmap(x=np.arange(plot_rate.size),z=plot_rate,colorbar_title=cbar_title,xaxis='x2', zauto= False, zmin = zmin, zmax = zmax, opacity = 0))
-        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title,xaxis='x1', zauto= False, zmin = zmin, zmax = zmax))
+        idx_data = np.tile(np.arange(plot_time.size),len(ylabels)).reshape((len(ylabels),plot_time.size))
+        fig.add_trace(go.Heatmap(x=plot_time.isot,z=plot_rate,colorbar_title=cbar_title, zauto= False, zmin = zmin, zmax = zmax, customdata=idx_data,
+        hovertemplate='Counts/s:%{z:.2f}<br>%{x}<br> index:%{customdata:.0f} '))
         fig.update_yaxes(dict(title='Energy Bin (keV)',tickmode='array',ticktext=ylabels,tickvals=np.arange(len(ylabels))))
-        #if zmin:
-        #    fig.update_layout(coloraxis_cmin = zmin)
-        #if zmax:
-        #    fig.update_layout(coloraxis_cmax = zmax)
     elif mode.lower() == 'scatter':
         
         emin.append(emax[-1])

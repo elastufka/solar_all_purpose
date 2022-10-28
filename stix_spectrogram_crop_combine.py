@@ -46,7 +46,12 @@ def open_spec_fits(filename):
         energy = hdul[3].copy() if hdul[3].name == 'ENERGIES' else hdul[4].copy()
     return primary_header, control, data, energy
        
-def fits_time_to_datetime(primary_header, data_table, factor = 1):
+def fits_time_to_datetime(*args, factor = 1):
+    if isinstance(args[0], str):
+        primary_header, _, data, _ = open_spec_fits(args[0])
+        data_table = data.data
+    else:
+        primary_header, data_table = args
     time_bin_center=data_table['time']
     duration = data_table['timedel']
     start_time = dt.strptime(primary_header['DATE_BEG'],"%Y-%m-%dT%H:%M:%S.%f")
@@ -119,12 +124,14 @@ def spec_fits_concatenate(fitsfile1, fitsfile2, tstart = None,tend = None, outfi
 
     #check that energy tables are the same. If not, there is an error
     for n in energy1.data.names:
-      np.testing.assert_allclose(energy1.data[n], energy2.data[n])
+        if not np.allclose(energy1.data[n], energy2.data[n]):
+            raise ValueError(f"Values for {n} in energy table are different in {fitsfile1} and {fitsfile2}!")
 
     #check that detector, pixel, and energy masks masks are the same
     for n in ['pixel_masks','detector_masks','pixel_mask','detector_mask','energy_bin_mask']:
       if n in control1.data.names:
-        np.testing.assert_allclose(control1.data[n], control2.data[n])
+          if not np.allclose(control1.data[n], control2.data[n]):
+              raise ValueError(f"Values for {n} in control table are different in {fitsfile1} and {fitsfile2}!")
 
     #get indices for tstart and tend - assuming tstart is in first file and tend in second.
     # look at this in more detail later
